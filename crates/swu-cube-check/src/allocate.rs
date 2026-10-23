@@ -8,6 +8,9 @@
 //! Input: `{"owned": {"<card id>": copies}, "packs": [{"name": "Pack 1", "slots": 15,
 //! "eligible": ["<card id>", ...]}]}`. A pack takes at most one copy of a card.
 //!
+//! `picks` are a pack's draw cards only (at most 15), never the leader or bases: a pick row typed
+//! Leader or Base, or more than 15 picks in a 15-slot pack, is refused.
+//!
 //! Eligibility says what a pack could take; it never reserves. A pack may also carry `"picks"`
 //! (its planned cards) and `"candidates"` (cards it may still choose from), card ids or rows. Only
 //! a card in one of those, owned in fewer copies than packs hold it there, is contested and
@@ -274,6 +277,33 @@ pub fn allocate_value<'a>(doc: &'a Value, fill: bool) -> Result<Plan, String> {
             .filter_map(|c| c.as_str().or_else(|| c.get("id")?.as_str()))
             .map(canon_id)
             .collect();
+        let name = p.get("name").and_then(Value::as_str).unwrap_or("a pack");
+        let non_draw = |c: &Value| matches!(c["type"].as_str(), Some("Leader" | "Base"));
+        let bad = p
+            .get("picks")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .chain(e.iter().filter(|r| {
+                r.get("id")
+                    .and_then(Value::as_str)
+                    .is_some_and(|id| picked.contains(canon_id(id)))
+            }))
+            .find(|c| non_draw(c));
+        if let Some(c) = bad {
+            let id = c["id"].as_str().unwrap_or("?");
+            return Err(format!(
+                "allocate: {name} picks {id}, a {}; picks are the {DRAW_CARDS} draw cards only, never the leader or bases",
+                c["type"].as_str().unwrap_or("Leader").to_lowercase()
+            ));
+        }
+        if slots[i] == DRAW_CARDS as usize && picked.len() > slots[i] {
+            return Err(format!(
+                "allocate: {name} has {} picks for {} slots; picks are the {DRAW_CARDS} draw cards only, never the leader or bases",
+                picked.len(),
+                slots[i]
+            ));
+        }
         pick_n.push(picked.len());
         pick_set.push(picked);
         saved.push(p.get("saved").and_then(Value::as_bool).unwrap_or(false));
@@ -1016,6 +1046,19 @@ mod tests {
                 "candidates": rows.iter().map(|r| r["id"].clone()).collect::<Vec<_>>()})
         };
         json!({"owned": owned, "packs": (0..packs).map(pack).collect::<Vec<_>>()})
+    }
+
+    #[test]
+    fn picks_that_include_a_leader_or_too_many_cards_are_refused() {
+        let mut doc = skeleton_doc(1);
+        let leader = json!({"id": "L-1", "type": "Leader", "cost": 3, "game": {"arenas": ["Ground"]}});
+        doc["packs"][0]["picks"] = json!([leader]);
+        let err = allocate_value(&doc, false).err().unwrap();
+        assert!(err.contains("L-1") && err.contains("leader"), "{err}");
+        let ids: Vec<String> = (0..16).map(|i| format!("Z0-{i:02}")).collect();
+        doc["packs"][0]["picks"] = json!(ids);
+        let err = allocate_value(&doc, false).err().unwrap();
+        assert!(err.contains("16 picks for 15 slots"), "{err}");
     }
 
     #[test]

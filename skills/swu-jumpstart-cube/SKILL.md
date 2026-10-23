@@ -146,7 +146,13 @@ of searches per pack (step 3) and choose from the results yourself; never search
    (picks of slots, eligible pool, skeleton ok/unmet/not checked, contested reserved, short, lost) and `FAIL` lines
    where a pack cannot be filled. `verbose: true` adds the `reserve <card>: <packs>` lines, naming
    the packs that hold each contested card; `fill: true` also chooses cards for open slots. Do not pick a
-   card another pack holds the reservation for. `set_deck_lines` refuses a pick no copy is left for;
+   card another pack holds the reservation for.
+   To check planned picks before saving, give a plan pack `picks: [card ids]`. Picks are the 15 draw
+   cards only, never the leader or bases: `allocate` refuses a pick that is a Leader or Base row, and
+   more than 15 picks in a 15-slot pack. `fill: true` reports "15 filled" without naming the
+   cards; it only proves the slots can be filled, so choose the cards yourself from the searches
+   and put them in `picks`. After saving the packs, run `allocate` on the group again.
+   In a test group, name each pack uniquely (`<group> Pack <n>`). `set_deck_lines` refuses a pick no copy is left for;
    `check_cube` in `copies` mode (step 6) is the proof.
 4. **Fill each pack to the skeleton.** Four `search_cards` per pack cover the Leader's whole pool,
    because section 2 allows four sets and no one query returns them all: color and alignment, color
@@ -208,7 +214,9 @@ Card fields the checker reads and the digest covers (generated from `DIGEST_CARD
 The `reserved` rule is meaningful only on the saved deck, where the server reports reservations.
 `pack` never checks copies across packs: only `cube` or `copies` over the saved decks (or
 `set_deck_lines` refusing) has run that sum. `copies` needs each card's `owned_count`, which a saved
-deck carries.
+deck carries. `copies` sums only the decks named (or the group): copies reserved by decks in other
+groups are invisible to it, so account for them with the `avail>=1` searches, which count
+what is left. `pack` mode takes every id in `deck_ids` in one call.
 
 The rules reported are: `shape`, `leader`, `base-hp`, `base-aspect`, `base-name`,
 `draw-aspect`, `arena`, `curve`, `reserved`, `unknown-card`, and for the cube `cube-size`,

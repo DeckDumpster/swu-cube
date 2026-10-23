@@ -185,98 +185,14 @@ fn allocate(path: &str, verbose: bool, fill: bool) -> ExitCode {
 
 fn allocate_value(doc: &serde_json::Value, verbose: bool, fill: bool) -> ExitCode {
     match swu_cube_check::allocate::allocate_value(doc, fill) {
-        Err(e) => {
-            eprintln!("{e}");
-            ExitCode::from(2)
-        }
+        Err(e) => fail(e),
         Ok(plan) => {
-            if plan.reservations.is_empty() && plan.failures.is_empty() {
-                let bare = plan
-                    .summary
-                    .iter()
-                    .filter(|s| s.picks == 0 && s.filled == 0)
-                    .count();
-                if bare == 0 {
-                    println!("no contested cards");
-                } else {
-                    println!(
-                        "no contested cards among picks ({bare} pack(s) have no picks; contention among their pools is not measured unless --fill)"
-                    );
-                }
-            }
-            for s in &plan.summary {
-                let lost: Vec<String> = s
-                    .lost
-                    .iter()
-                    .take(LOST_SHOWN)
-                    .map(|(c, to)| {
-                        if !to.is_empty() && to.iter().all(|t| plan.saved.contains(t)) {
-                            format!("{c} held by {}", to.join("+"))
-                        } else {
-                            format!("{c} to {}", to.join("+"))
-                        }
-                    })
-                    .collect();
-                let more = s.lost.len().saturating_sub(LOST_SHOWN);
-                println!(
-                    "{}: {} of {} picks{}, eligible pool of {}, skeleton {}, contested reserved {}, short {}, lost {}{}",
-                    s.name,
-                    s.picks,
-                    s.slots,
-                    if s.filled > 0 {
-                        format!(", {} filled", s.filled)
-                    } else {
-                        String::new()
-                    },
-                    s.pool,
-                    match s.skeleton {
-                        Some(true) => "ok",
-                        Some(false) => "unmet",
-                        None => "not checked",
-                    },
-                    s.reserved,
-                    s.short,
-                    s.lost.len(),
-                    if lost.is_empty() {
-                        String::new()
-                    } else {
-                        format!(
-                            " ({}{})",
-                            lost.join(", "),
-                            if more > 0 {
-                                format!(", +{more} more")
-                            } else {
-                                String::new()
-                            }
-                        )
-                    }
-                );
-            }
-            if verbose {
-                for (card, packs) in &plan.reservations {
-                    let (copies, wanting) = plan.contested[card];
-                    println!(
-                        "reserve {card}: {} (contested: {copies} cop{}, {wanting} packs)",
-                        packs.join(", "),
-                        if copies == 1 { "y" } else { "ies" }
-                    );
-                }
-            }
-            for f in &plan.failures {
-                println!("FAIL {f}");
-            }
-            if plan.failures.is_empty() {
-                println!("ok");
-                ExitCode::SUCCESS
-            } else {
-                ExitCode::from(1)
-            }
+            let (code, text) = swu_cube_check::allocate::render(&plan, verbose);
+            println!("{text}");
+            ExitCode::from(code as u8)
         }
     }
 }
-
-/// Cards named per pack in the default summary; `--verbose` has the full reserve lines.
-const LOST_SHOWN: usize = 2;
 
 const USAGE: &str = "usage: swu-cube-check mcp   (serve check_cube over MCP stdio; the plugin's .mcp.json runs this)\n       swu-cube-check login [--site URL] [--client-id ID] | login --status
        swu-cube-check pack --deck ID | cube --group NAME | copies --group NAME | allocate --group NAME | allocate --plan FILE   [--site URL]

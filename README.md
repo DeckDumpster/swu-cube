@@ -19,7 +19,11 @@ Then ask Claude to build or audit your SWU Jumpstart cube; the `swu-jumpstart-cu
 
 ## The checker binary
 
-`bin/swu-cube-check-launch` runs the checker. On first use it downloads the binary pinned in the launcher for your platform (`aarch64-apple-darwin` or `x86_64-unknown-linux-gnu`) from this repo's GitHub release, verifies it against the sha256 pinned in the launcher, caches it under the plugin's data directory and execs it. A checksum mismatch or any other platform is refused with a named error. Pushing a `v*` tag builds both targets, attaches them and a `SHA256SUMS` to the release, and opens a pull request that pins the new version in the launcher.
+`bin/swu-cube-check-launch` runs the checker. On first use it downloads the binary pinned in the launcher for your platform (`aarch64-apple-darwin` or `x86_64-unknown-linux-gnu`) from this repo's GitHub release, verifies it against the sha256 pinned in the launcher, caches it under the plugin's data directory and execs it. A checksum mismatch or any other platform is refused with a named error. 
+
+### Releasing
+
+Pushing a `v*` tag builds both targets and attaches them and a `SHA256SUMS` to the release; the workflow opens no pull request. To release: tag `v*`, wait for the Release workflow to go green, run `scripts/pin-release.sh <version>` (it downloads that release's `SHA256SUMS`, rewrites `VERSION` and the two `SHA256_` lines in the launcher, and refuses if a binary is missing from it), then land the resulting diff as a bead through the queue.
 
 The same binary has a CLI, for use outside Claude Code: `swu-cube-check pack --deck ID`, `cube --group NAME`, `copies --group NAME`, `allocate --group NAME`, and `login` (`--help` prints the usage).
 

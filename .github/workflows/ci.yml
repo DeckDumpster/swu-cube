@@ -20,6 +20,8 @@ jobs:
           cargo test --workspace
       - name: Launcher tests
         run: sh tests/launcher.sh
+      - name: Pin script tests
+        run: sh tests/pin-release.sh
       - name: Plugin manifests are JSON
         run: |
           python3 -m json.tool .claude-plugin/plugin.json >/dev/null

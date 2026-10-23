@@ -4,9 +4,9 @@
 # program (MCP stdio), so everything here goes to stderr.
 #
 # The release workflow rewrites the three pinned lines below in a pull request per release.
-VERSION="0.0.0"
-SHA256_aarch64_apple_darwin="unpinned"
-SHA256_x86_64_unknown_linux_gnu="unpinned"
+VERSION="0.1.0"
+SHA256_aarch64_apple_darwin="633046450fc748d14b81bde9595d4fcdf6853294bec66a75f2c190b1ae9a69e7"
+SHA256_x86_64_unknown_linux_gnu="0e6142491ed16144af74a58f63e1725b726a350c2a7c3524e3af2d651dec9b44"
 
 set -eu
 

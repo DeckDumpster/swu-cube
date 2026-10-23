@@ -16,13 +16,16 @@ pub type Open = dyn Fn(Option<&str>) -> Result<Box<dyn Source>, String>;
 fn tool() -> Value {
     json!({
         "name": "check_cube",
-        "description": "Check saved dumpstar decks against the SWU Jumpstart cube rules. mode `pack` checks each deck as one 18-card pack; mode `cube` checks the decks together as a 20-pack cube (singleton, copies, alignment, bases); mode `copies` runs only the copy-count check over a partial build. Name the decks by `deck_ids` or by `group`; the checker fetches them itself and verifies each deck's lines_digest. Returns `ok`, or one `FAIL <rule>: <what is wrong>` line per broken rule.",
+        "description": "Check saved dumpstar decks against the SWU Jumpstart cube rules. mode `pack` checks each deck as one 18-card pack; mode `cube` checks the decks together as a 20-pack cube (singleton, copies, alignment, bases); mode `copies` runs only the copy-count check over a partial build; mode `allocate` plans copies across the whole cube (give `group` and/or `plan`, not `deck_ids`; `verbose` adds the reserve lines, `fill` chooses cards for the slots a plan leaves open). Name the decks by `deck_ids` or by `group`; the checker fetches them itself and verifies each deck's lines_digest. Returns `ok`, or one `FAIL <rule>: <what is wrong>` line per broken rule.",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "mode": {"type": "string", "enum": ["pack", "cube", "copies"]},
+                "mode": {"type": "string", "enum": ["pack", "cube", "copies", "allocate"]},
                 "deck_ids": {"type": "array", "items": {"type": "integer"}, "description": "Saved deck ids."},
                 "group": {"type": "string", "description": "A deck group: every deck in it."},
+                "plan": {"type": "object", "description": "allocate only: a plan whose `packs` name `queries` (searches the checker runs) and/or `deck` (a saved deck id), as `allocate --plan FILE` reads."},
+                "verbose": {"type": "boolean", "description": "allocate only: add every reserve line."},
+                "fill": {"type": "boolean", "description": "allocate only: choose cards for open slots."},
                 "site": {"type": "string", "description": "Override the dumpstar site URL."}
             },
             "required": ["mode"],
@@ -37,7 +40,21 @@ pub fn check_cube(args: &Value, src: &dyn Source) -> (String, bool) {
     let run = || -> Result<(i32, String), String> {
         let mode = args["mode"]
             .as_str()
-            .ok_or("mode must be `pack`, `cube` or `copies`")?;
+            .ok_or("mode must be `pack`, `cube`, `copies` or `allocate`")?;
+        if mode == "allocate" {
+            if args.get("deck_ids").is_some_and(|v| !v.is_null()) {
+                return Err("allocate takes group and/or plan, not deck_ids".into());
+            }
+            let group = args.get("group").and_then(Value::as_str);
+            let plan = args.get("plan").filter(|v| !v.is_null());
+            if group.is_none() && plan.is_none() {
+                return Err("allocate needs a group and/or a plan".into());
+            }
+            let flag = |k: &str| args.get(k).and_then(Value::as_bool).unwrap_or(false);
+            let doc = fetch::allocation(src, group, plan)?;
+            let plan = crate::allocate::allocate_value(&doc, flag("fill"))?;
+            return Ok(crate::allocate::render(&plan, flag("verbose")));
+        }
         let ids: Option<Vec<i64>> = match args.get("deck_ids").filter(|v| !v.is_null()) {
             Some(v) => Some(
                 v.as_array()
@@ -92,7 +109,7 @@ pub fn check_cube(args: &Value, src: &dyn Source) -> (String, bool) {
                 Ok((code, lines.join("\n")))
             }
             other => Err(format!(
-                "mode must be `pack`, `cube` or `copies`, not `{other}`"
+                "mode must be `pack`, `cube`, `copies` or `allocate`, not `{other}`"
             )),
         }
     };

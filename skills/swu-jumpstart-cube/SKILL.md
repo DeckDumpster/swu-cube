@@ -133,13 +133,16 @@ of searches per pack (step 3) and choose from the results yourself; never search
    (for example Command 3+2, Vigilance 2+3, Aggression 3+2, Cunning 2+3). Apply the universality
    rule. Each pack takes an epic and a vanilla base of its Leader's color; if the collection lacks them, say so and build what is possible.
 3. **Plan copies across the whole cube.** Whenever two or more packs are planned together (a
-   full cube or any multi-pack build), plan copies before saving any pack: no tool does it for you.
-   Heroism-only, Villainy-only and no-aspect cards (Longbeam Cruiser) fit packs of any color, so an
+   full cube or any multi-pack build), plan copies before saving any pack. Heroism-only, Villainy-only and no-aspect cards (Longbeam Cruiser) fit packs of any color, so an
    early pack's picks can use up copies a later color depends on, and the per-pack check cannot
-   see it. Keep a running tally of the copies each saved pack holds against `owned_count`, treat
-   Leaders and non-base Rares and Legendaries as singleton (by title and subtitle) across the whole
-   cube, and do not pick a card whose remaining copies a later pack needs. `set_deck_lines` refuses
-   a pick no copy is left for; `check_cube` in `copies` mode (step 6) is the proof.
+   see it. Call `check_cube` with `mode: allocate` and
+   `group: <group>` (saved packs, plus any planned ones as `plan: {packs: [{name, queries?, deck?}]}`,
+   each pack naming the `queries` the checker runs and/or a saved `deck` id): it runs the pool searches itself and prints one line per pack
+   (picks of slots, eligible pool, skeleton ok/unmet/not checked, contested reserved, short, lost) and `FAIL` lines
+   where a pack cannot be filled. `verbose: true` adds the `reserve <card>: <packs>` lines, naming
+   the packs that hold each contested card; `fill: true` also chooses cards for open slots. Do not pick a
+   card another pack holds the reservation for. `set_deck_lines` refuses a pick no copy is left for;
+   `check_cube` in `copies` mode (step 6) is the proof.
 4. **Fill each pack to the skeleton.** Four `search_cards` per pack cover the Leader's whole pool,
    because section 2 allows four sets and no one query returns them all: color and alignment, color
    only, alignment only, and no aspect at all. None returns Leaders or bases, which are chosen
@@ -185,7 +188,8 @@ of searches per pack (step 3) and choose from the results yourself; never search
 ## The checker
 
 `check_cube` is a tool of this plugin's `swu-cube-check` MCP server. Its arguments: `mode`
-(`pack`, `cube` or `copies`), the decks as `deck_ids` (integers) or as a `group` name, and
+(`pack`, `cube`, `copies` or `allocate`), the decks as `deck_ids` (integers) or as a `group` name
+(`allocate` takes `group` and/or `plan`, plus `verbose` and `fill`, never `deck_ids`), and
 optionally `site`. It prints `ok`, or one `FAIL <rule>: <what is wrong>` line per broken rule; an
 input it cannot fetch or read (no sign-in, an unknown deck, an empty group) comes back as a tool
 error, never as `ok`. With several `deck_ids` in `pack` mode each line is prefixed `deck <id>:`.

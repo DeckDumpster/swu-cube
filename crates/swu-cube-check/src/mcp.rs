@@ -177,3 +177,82 @@ pub fn serve(input: impl BufRead, mut out: impl Write, open: &Open) -> Result<()
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Backticked tokens of a markdown span.
+    fn ticks(s: &str) -> Vec<&str> {
+        s.split('`').skip(1).step_by(2).collect()
+    }
+
+    #[test]
+    fn the_skill_names_only_arguments_and_modes_the_schema_offers() {
+        let skill = include_str!("../../../skills/swu-jumpstart-cube/SKILL.md");
+        let schema = &tool()["inputSchema"];
+        let props: Vec<&str> = schema["properties"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        let modes: Vec<&str> = schema["properties"]["mode"]["enum"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| m.as_str().unwrap())
+            .collect();
+
+        // Every `mode: X` the skill writes is an enum value.
+        for chunk in skill.split("`mode: ").skip(1) {
+            let m = chunk.split('`').next().unwrap();
+            assert!(
+                modes.contains(&m),
+                "SKILL.md names mode `{m}`; schema offers {modes:?}"
+            );
+        }
+        // Every `key: ` argument written as `key: value` in a check_cube call is a property.
+        for t in ticks(skill).into_iter().filter(|t| t.contains(": ")) {
+            let key = t.split(": ").next().unwrap();
+            if [
+                "mode", "group", "deck_ids", "verbose", "fill", "site", "plan",
+            ]
+            .contains(&key)
+            {
+                assert!(props.contains(&key), "SKILL.md names argument `{key}`");
+            }
+        }
+        // The arguments paragraph lists exactly the schema's properties and modes.
+        let para = skill
+            .lines()
+            .find(|l| l.starts_with("`check_cube` is a tool of this plugin's"))
+            .expect("SKILL.md lacks the checker paragraph");
+        let start = skill.find(para).unwrap();
+        let args: Vec<&str> = ticks(&skill[start..])
+            .into_iter()
+            .take_while(|t| *t != "ok")
+            .collect();
+        for p in &props {
+            assert!(
+                args.contains(p),
+                "SKILL.md's checker section omits argument `{p}`"
+            );
+        }
+        for m in &modes {
+            assert!(
+                args.contains(m),
+                "SKILL.md's checker section omits mode `{m}`"
+            );
+        }
+        for a in &args {
+            let known = props.contains(a)
+                || modes.contains(a)
+                || ["check_cube", "swu-cube-check"].contains(a);
+            assert!(
+                known,
+                "SKILL.md's checker section names `{a}`, not in the schema"
+            );
+        }
+    }
+}

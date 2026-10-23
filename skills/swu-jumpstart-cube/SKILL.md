@@ -27,13 +27,18 @@ copies and that no copy is in two decks. The `check_cube` tool (below) is what t
 
 ### 2. The 18-card pack
 
-1. **1 Leader.** It must be Heroism or Villainy: a **Neutral** leader (no alignment, such as
+1. **1 Leader.** It must be Heroism or Villainy: a **Neutral** leader (the data says `"alignment": "Neutral"`, such as
    Fennec Shand) does not lead a pack, and `check_cube` rejects one. A leader with an alignment but **no color aspect** (Anakin Skywalker, Tempted by the Dark Side, LOF-18: the official record lists Heroism only) cannot lead a pack either, since a pack is defined by its leader's color; the checker rejects it with that message, so pick another leader. It sets the alignment (Heroism/Villainy, the aspect names; `game.alignment` and the summary use them too) and the color aspect.
+Bases come in three kinds in the data: 25-HP with an epic action, 28-HP with an ability but
+no epic action (`collection_summary` calls these `ability`; never valid in a pack: `base-hp` rejects
+them), and 30-HP vanilla.
+
 2. **1 Epic Action Base (25 HP)**, strictly the Leader's color aspect: any 25-HP base of that aspect with an epic action.
 3. **1 Vanilla Base (30 HP)**, strictly the Leader's color aspect: any 30-HP base of that aspect without an epic action.
 4. **15 draw cards**, none off the Leader's alignment or color aspect (no off-aspect penalties).
-   A card of the Leader's color with no Heroism/Villainy aspect (Make an Opening, Vanquish) carries
-   no aspect penalty and is allowed; so is a card with no aspect at all. A card of another color,
+   A card of the Leader's color with `"alignment": "Neutral"` (no Heroism/Villainy aspect: Make an
+   Opening, Vanquish) carries no aspect penalty and is legal in that leader's pack; so is a card with
+   no aspect at all. A Neutral *leader* is not legal. A card of another color,
    or of the other alignment, is not.
 
 ### 3. Pre-game setup (why the aspects must match)
@@ -54,7 +59,7 @@ epic action) or health (30 HP vanilla).
 
 | Cost | Quantity | Purpose |
 | --- | --- | --- |
-| 1 | 0 to 1 | Optional. Premium upgrades or events only. |
+| 0-1 | 0 to 1 | Optional. The checker counts cost 0 with cost 1 (one shared slot of at most 1 card). It does not enforce "premium upgrades or events only"; that is advice. |
 | 2 | 4 to 5 | Critical. Ensures a turn-1 play. |
 | 3 | 4 to 5 | Critical. Maintains tempo on turn 2. |
 | 4 | 2 to 3 | Mid-game stabilizers and Sentinels. |
@@ -84,7 +89,7 @@ that are possible; never fail silently.
 **Leaders: the universality rule.** Prefer Common Leaders with universal, unconditional abilities
 (damage, shielding, resource readying). Avoid Rare, parasitic Leaders whose abilities need
 specific traits (Hera Syndulla, Grand Inquisitor) unless the other half-deck will support them.
-Top-tier universal examples: Sabine Wren (SOR-14), Boba Fett (SOR-15), Darth Vader. Leia Organa, Alliance General (SOR-9) is not one: her ability needs Rebel units.
+Top-tier universal examples: Sabine Wren (SOR-14), Boba Fett (SOR-15), Darth Vader, Dark Lord of the Sith (SOR-10). Leia Organa, Alliance General (SOR-9) is not one: her ability needs Rebel units.
 
 ### 6. Archetype blueprints
 
@@ -136,7 +141,7 @@ of searches per pack (step 3) and choose from the results yourself; never search
    full cube or any multi-pack build), plan copies before saving any pack. Heroism-only, Villainy-only and no-aspect cards (Longbeam Cruiser) fit packs of any color, so an
    early pack's picks can use up copies a later color depends on, and the per-pack check cannot
    see it. Call `check_cube` with `mode: allocate` and
-   `group: <group>` (saved packs, plus any planned ones as `plan: {packs: [{name, queries?, deck?}]}`,
+   `group: <group>` and/or `plan` (saved packs, plus any planned ones as `plan: {packs: [{name, queries?, deck?}]}`,
    each pack naming the `queries` the checker runs and/or a saved `deck` id): it runs the pool searches itself and prints one line per pack
    (picks of slots, eligible pool, skeleton ok/unmet/not checked, contested reserved, short, lost) and `FAIL` lines
    where a pack cannot be filled. `verbose: true` adds the `reserve <card>: <packs>` lines, naming
@@ -188,7 +193,7 @@ of searches per pack (step 3) and choose from the results yourself; never search
 ## The checker
 
 `check_cube` is a tool of this plugin's `swu-cube-check` MCP server. Its arguments: `mode`
-(`pack`, `cube`, `copies` or `allocate`), the decks as `deck_ids` (integers) or as a `group` name
+(`pack`, `cube`, `copies` or `allocate`), the decks as `deck_ids` (integers) or as a `group` name (check_cube takes either)
 (`allocate` takes `group` and/or `plan`, plus `verbose` and `fill`, never `deck_ids`), and
 optionally `site`. It prints `ok`, or one `FAIL <rule>: <what is wrong>` line per broken rule; an
 input it cannot fetch or read (no sign-in, an unknown deck, an empty group) comes back as a tool

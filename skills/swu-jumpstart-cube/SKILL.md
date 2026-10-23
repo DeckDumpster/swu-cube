@@ -90,6 +90,14 @@ that are possible; never fail silently.
 **Leaders: the universality rule.** Prefer Common Leaders with universal, unconditional abilities
 (damage, shielding, resource readying). Avoid Rare, parasitic Leaders whose abilities need
 specific traits (Hera Syndulla, Grand Inquisitor) unless the other half-deck will support them.
+A leader whose undeployed (front) side spends a resource nothing in its pack produces, such as an
+Action costing "use the Force" in a pack with no "The Force is with you" card, is automatically
+disqualifying: `check_cube` fails it `leader-mechanic`. A match pairs two random packs, so only the
+leader's own pack (and a cube-wide producer) is dependable, never a partner pack. A draw card that
+spends an unproduced resource is a `pack-mechanic` warning, and `cube` mode fails `cube-mechanic`
+("force consumed by N cards, produced by 0") and reports, per such pack, the share of other packs
+that produce it. `allocate` warns the same for picks (give the pack's `leader` row for its front side).
+
 Top-tier universal examples: Sabine Wren (SOR-14), Boba Fett (SOR-15), Darth Vader, Dark Lord of the Sith (SOR-10). Leia Organa, Alliance General (SOR-9) is not one: her ability needs Rebel units.
 
 ### 6. Archetype blueprints

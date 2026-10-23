@@ -9,14 +9,14 @@ trap 'rm -rf "$work"' EXIT
 fails=0
 fail() { echo "FAIL: $*"; fails=$((fails + 1)); }
 
-cards='{"L":{"type":"Leader"},"B":{"type":"Base"}}'
+cards='{"L":{"type":"Leader","name":"Lead"},"B":{"type":"Base"}}'
 lines='[]'
 for i in $(seq 15); do
   cards=$(jq -c --arg k "c$i" '. + {($k): {type:"Unit"}}' <<<"$cards")
   lines=$(jq -c --arg k "c$i" '. + [{card_id:$k}]' <<<"$lines")
 done
 cards=$(jq -c '. + {extra:{type:"Event"}}' <<<"$cards")
-jq -cn --argjson c "$cards" --argjson l "$lines" '{cards:$c,lines:$l}' >"$work/doc.json"
+jq -cn --argjson c "$cards" --argjson l "$lines" '{deck:{name:"Lead - Smoke Test"},cards:$c,lines:$l}' >"$work/doc.json"
 
 cat >"$work/stub" <<'S'
 #!/bin/bash
@@ -31,7 +31,7 @@ reply 3 "allocation verdict" '{}'
 reply 4 "L is a Leader" '{"isError":true}'
 reply 5 "16 picks: more than 15" '{"isError":true}'
 reply 6 "copies verdict" '{}'
-reply 7 "cube verdict" '{}'
+reply 7 "$(printf "FAIL pack 'A': leader-mechanic: x\nFAIL pack 'B': leader-mechanic: x\nWARN pack 'C': pack-mechanic: x\nWARN pack 'D': pack-mechanic: x\nWARN pack 'E': pack-mechanic: x\nFAIL cube-mechanic: force consumed by 7 cards, produced by 0")" '{}'
 S
 chmod +x "$work/stub"
 

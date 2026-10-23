@@ -51,6 +51,8 @@ pub const CURVE: [(u32, u32); 6] = [(0, 1), (4, 5), (4, 5), (2, 3), (1, 2), (1, 
 pub struct Failure {
     pub rule: &'static str,
     pub message: String,
+    /// A warning: printed as `WARN`, and does not fail the check.
+    pub warn: bool,
 }
 
 impl fmt::Display for Failure {
@@ -63,7 +65,41 @@ fn fail(rule: &'static str, message: impl Into<String>) -> Failure {
     Failure {
         rule,
         message: message.into(),
+        warn: false,
     }
+}
+
+fn warn(rule: &'static str, message: impl Into<String>) -> Failure {
+    Failure {
+        warn: true,
+        ..fail(rule, message)
+    }
+}
+
+/// A mechanic some cards consume and others produce, found by rules-text patterns (lowercase
+/// substrings). A card's `game.mechanics` (`{"consumes": [...], "produces": [...]}`, mechanic
+/// names), when the catalog carries it, takes the place of the patterns for that card.
+struct Mechanic {
+    name: &'static str,
+    consumes: &'static [&'static str],
+    produces: &'static [&'static str],
+}
+
+const MECHANICS: [Mechanic; 1] = [Mechanic {
+    name: "force",
+    consumes: &["use the force"],
+    produces: &["the force is with you"],
+}];
+
+/// The part of a leader's rules text its undeployed side prints: before `Deployed:`, without the
+/// epic action that deploys it.
+fn front_side(text: &str) -> String {
+    let front = text.split("Deployed:").next().unwrap_or("");
+    front
+        .lines()
+        .filter(|l| !l.trim_start().starts_with("Epic Action"))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// A card the checkers care about, read from a `search_cards`/`get_card` card object.
@@ -82,9 +118,32 @@ struct Card {
     arenas: BTreeSet<String>,
     /// The card object's `owned_count`, when the file carries one.
     owned: Option<u32>,
+    rules_text: String,
+    /// `game.mechanics`, when the catalog carries it: (consumed, produced) mechanic names.
+    mechanics: Option<(BTreeSet<String>, BTreeSet<String>)>,
 }
 
 impl Card {
+    /// Whether the card consumes (`produce` false) or produces mechanic `m`. A leader is read on
+    /// its undeployed side only; a base's consumption is not counted.
+    fn touches(&self, m: &Mechanic, produce: bool) -> bool {
+        if let Some((consumes, produces)) = &self.mechanics {
+            return if produce { produces } else { consumes }.contains(m.name);
+        }
+        if self.kind == "Base" && !produce {
+            return false;
+        }
+        let text = if self.kind == "Leader" {
+            front_side(&self.rules_text)
+        } else {
+            self.rules_text.clone()
+        }
+        .to_lowercase();
+        if produce { m.produces } else { m.consumes }
+            .iter()
+            .any(|p| text.contains(p))
+    }
+
     fn from_value(v: &Value) -> Card {
         let strings = |p: &Value| -> BTreeSet<String> {
             p.as_array()
@@ -115,6 +174,10 @@ impl Card {
             owned: v["owned_count"]
                 .as_u64()
                 .and_then(|o| u32::try_from(o).ok()),
+            rules_text: game["rules_text"].as_str().unwrap_or("").to_string(),
+            mechanics: game.get("mechanics").filter(|m| m.is_object()).map(|m| {
+                (strings(&m["consumes"]), strings(&m["produces"]))
+            }),
         }
     }
 
@@ -456,6 +519,109 @@ pub fn check_pack(pack: &Pack) -> Vec<Failure> {
             ),
         ));
     }
+    out.extend(mechanic_failures(pack));
+    out
+}
+
+/// A consumer with nothing in its own pack to produce what it spends. A match is two random packs,
+/// so only this pack's own cards (and the leader's front side) are dependable producers. The
+/// leader's undeployed side is a failure; a draw card is a warning.
+fn mechanic_failures(pack: &Pack) -> Vec<Failure> {
+    let mut out = Vec::new();
+    let cards: Vec<&Card> = pack
+        .lines
+        .iter()
+        .filter_map(|l| pack.cards.get(&l.card_id))
+        .collect();
+    for m in &MECHANICS {
+        if cards.iter().any(|c| c.touches(m, true)) {
+            continue;
+        }
+        for c in &cards {
+            if !c.touches(m, false) {
+                continue;
+            }
+            if c.kind == "Leader" {
+                out.push(fail(
+                    "leader-mechanic",
+                    format!(
+                        "leader '{}' spends {} on its undeployed side, and nothing in the pack produces it",
+                        c.name, m.name
+                    ),
+                ));
+            } else if c.kind != "Base" {
+                out.push(warn(
+                    "pack-mechanic",
+                    format!(
+                        "'{}' spends {}, and nothing in the pack produces it",
+                        c.name, m.name
+                    ),
+                ));
+            }
+        }
+    }
+    out
+}
+
+/// The planned cards (`search_cards`/`get_card` rows) that spend a mechanic nothing in `cards`
+/// produces, as (card name, mechanic). `cards` is a pack's picks plus its leader, when known.
+pub fn unproduced_consumers(cards: &[&Value]) -> Vec<(String, &'static str)> {
+    let cards: Vec<Card> = cards.iter().map(|v| Card::from_value(v)).collect();
+    let mut out = Vec::new();
+    for m in &MECHANICS {
+        if cards.iter().any(|c| c.touches(m, true)) {
+            continue;
+        }
+        out.extend(
+            cards
+                .iter()
+                .filter(|c| c.touches(m, false))
+                .map(|c| (c.name.clone(), m.name)),
+        );
+    }
+    out
+}
+
+/// Cube-wide: a mechanic consumed somewhere and produced nowhere fails; for each pack that
+/// consumes one it does not produce itself, the share of the other packs that do.
+fn cube_mechanic_findings(packs: &[Pack]) -> Vec<Failure> {
+    let mut out = Vec::new();
+    let in_pack = |p: &Pack, m: &Mechanic, produce: bool| -> u32 {
+        p.lines
+            .iter()
+            .filter_map(|l| p.cards.get(&l.card_id).map(|c| (c, l.qty)))
+            .filter(|(c, _)| c.kind != "Base" || produce)
+            .filter(|(c, _)| c.touches(m, produce))
+            .map(|(_, q)| q)
+            .sum()
+    };
+    for m in &MECHANICS {
+        let consumers: u32 = packs.iter().map(|p| in_pack(p, m, false)).sum();
+        let producers: u32 = packs.iter().map(|p| in_pack(p, m, true)).sum();
+        if consumers > 0 && producers == 0 {
+            out.push(fail(
+                "cube-mechanic",
+                format!("{} consumed by {consumers} cards, produced by 0", m.name),
+            ));
+        }
+        let producing: Vec<bool> = packs.iter().map(|p| in_pack(p, m, true) > 0).collect();
+        for (i, p) in packs.iter().enumerate() {
+            if in_pack(p, m, false) == 0 || producing[i] {
+                continue;
+            }
+            let others = packs.len() - 1;
+            let covered = producing.iter().filter(|b| **b).count();
+            out.push(warn(
+                "mechanic-report",
+                format!(
+                    "pack '{}' spends {} and makes none; {covered} of {others} other packs produce it ({}%)",
+                    p.name,
+                    m.name,
+                    if others == 0 { 0 } else { covered * 100 / others }
+                ),
+            ));
+        }
+    }
     out
 }
 
@@ -559,14 +725,18 @@ pub fn render(result: Result<Vec<Failure>, String>) -> (i32, String) {
     match result {
         Err(e) => (2, e),
         Ok(failures) if failures.is_empty() => (0, "ok".into()),
-        Ok(failures) => (
-            1,
-            failures
-                .iter()
-                .map(|f| format!("FAIL {f}"))
-                .collect::<Vec<_>>()
-                .join("\n"),
-        ),
+        Ok(failures) => {
+            let hard = failures.iter().any(|f| !f.warn);
+            let lines = failures.iter().map(|f| {
+                format!("{} {f}", if f.warn { "WARN" } else { "FAIL" })
+            });
+            let text: Vec<String> = if hard {
+                lines.collect()
+            } else {
+                std::iter::once("ok".to_string()).chain(lines).collect()
+            };
+            (i32::from(hard), text.join("\n"))
+        }
     }
 }
 
@@ -580,8 +750,8 @@ pub fn check_cube(packs: &[Pack]) -> Vec<Failure> {
     let mut out = Vec::new();
     for p in packs {
         out.extend(check_pack(p).into_iter().map(|f| Failure {
-            rule: f.rule,
             message: format!("pack '{}': {}", p.name, f.message),
+            ..f
         }));
     }
     if packs.len() != CUBE_PACKS {
@@ -616,6 +786,7 @@ pub fn check_cube(packs: &[Pack]) -> Vec<Failure> {
     }
     out.extend(singleton_failures(packs));
     out.extend(copies_failures(packs));
+    out.extend(cube_mechanic_findings(packs));
     out
 }
 
@@ -1459,5 +1630,86 @@ mod tests {
         }
         let doc = json!({"packs": packs, "cards": shared});
         assert_eq!(check_cube_value(&doc).unwrap(), vec![]);
+    }
+
+    fn force_leader(p: &mut Value) {
+        edit(p, "L1", |c| {
+            c["game"]["rules_text"] = json!("Action [Exhaust, use the Force]: Draw a card.\nEpic Action: Deploy.\nDeployed:\nOn Attack: Draw.")
+        });
+    }
+
+    #[test]
+    fn a_leader_spending_an_unproduced_resource_fails_and_its_draw_consumers_warn() {
+        let mut p = pack(1, "Heroism", "Command");
+        force_leader(&mut p);
+        edit(&mut p, "C1-0", |c| {
+            c["game"]["rules_text"] = json!("Action [use the Force]: Heal 2.")
+        });
+        let f = check_pack_value(&p).unwrap();
+        assert!(f.iter().any(|f| f.rule == "leader-mechanic" && !f.warn), "{f:?}");
+        assert!(f.iter().any(|f| f.rule == "pack-mechanic" && f.warn), "{f:?}");
+        let (code, text) = render(Ok(f));
+        assert_eq!(code, 1);
+        assert!(text.contains("FAIL leader-mechanic") && text.contains("WARN pack-mechanic"));
+    }
+
+    #[test]
+    fn a_producer_in_the_pack_covers_the_consumer_and_the_deployed_side_is_ignored() {
+        let mut p = pack(1, "Heroism", "Command");
+        force_leader(&mut p);
+        edit(&mut p, "C1-0", |c| {
+            c["game"]["rules_text"] = json!("The Force is with you.")
+        });
+        assert_eq!(check_pack_value(&p).unwrap(), vec![]);
+        let mut q = pack(1, "Heroism", "Command");
+        edit(&mut q, "L1", |c| {
+            c["game"]["rules_text"] = json!("Deployed:\nOn Attack: use the Force.")
+        });
+        assert_eq!(check_pack_value(&q).unwrap(), vec![]);
+    }
+
+    #[test]
+    fn warnings_alone_render_ok_with_exit_zero() {
+        let mut p = pack(1, "Heroism", "Command");
+        edit(&mut p, "C1-0", |c| {
+            c["game"]["rules_text"] = json!("use the Force: heal")
+        });
+        let (code, text) = render(check_pack_value(&p));
+        assert_eq!(code, 0);
+        assert!(text.starts_with("ok\nWARN pack-mechanic"), "{text}");
+    }
+
+    #[test]
+    fn a_cube_with_consumers_and_no_producer_fails_and_reports_partner_share() {
+        let mut c = cube();
+        force_leader(&mut c[0]);
+        edit(&mut c[1], "C2-0", |x| {
+            x["game"]["rules_text"] = json!("use the Force")
+        });
+        let f = check_cube_value(&Value::Array(c.clone())).unwrap();
+        assert!(
+            f.iter().any(|f| f.rule == "cube-mechanic"
+                && f.message == "force consumed by 2 cards, produced by 0"),
+            "{f:?}"
+        );
+        edit(&mut c[5], "C6-0", |x| {
+            x["game"]["rules_text"] = json!("The Force is with you.")
+        });
+        let f = check_cube_value(&Value::Array(c)).unwrap();
+        assert!(f.iter().all(|f| f.rule != "cube-mechanic"));
+        assert!(
+            f.iter().any(|f| f.rule == "mechanic-report" && f.message.contains("1 of 19")),
+            "{f:?}"
+        );
+    }
+
+    #[test]
+    fn catalog_mechanics_replace_the_text_patterns() {
+        let mut p = pack(1, "Heroism", "Command");
+        edit(&mut p, "L1", |c| {
+            c["game"]["mechanics"] = json!({"consumes": ["force"], "produces": []})
+        });
+        let f = check_pack_value(&p).unwrap();
+        assert!(f.iter().any(|f| f.rule == "leader-mechanic"), "{f:?}");
     }
 }

@@ -9,6 +9,8 @@
 #   SWU_CUBE_PACK_DECK  id of a known-good saved pack on <site> (required)
 #   SWU_CUBE_GROUP      a group of saved decks there (default swu-jumpstart-cube)
 #   SWU_CUBE_BIN        the swu-cube-check binary (default target/release/swu-cube-check)
+#   SWU_CUBE_EXPECT_MECHANICS  0 skips the mechanic assertions, which hold for the 2026-10-23 swu-jumpstart-cube
+#                       group (Force leaders in 2 packs, Force draw cards in 3, 7 Force consumers, no producer)
 #
 # Prints every call's output; exits non-zero if any assertion failed.
 set -u
@@ -92,12 +94,20 @@ if [ -n "$leader_name" ] && [ "${pack_name#"$leader_name" - }" != "$pack_name" ]
 fi
 check "pack $deck is named '<Leader> - <Flavor>' (name: '$pack_name', leader: '$leader_name')" "$name_ok"
 
-check "pack on deck $deck returns ok" "$([ "$(text 2)" = ok ] && [ "$(iserr 2)" = false ]; echo $?)"
+check "pack on deck $deck returns ok (warnings may follow)" "$([ "$(text 2 | head -n 1)" = ok ] && [ "$(iserr 2)" = false ]; echo $?)"
 check "allocate with a legal draw pick and no queries is not an error" "$([ "$(iserr 3)" = false ]; echo $?)"
 leader_text=$(text 4)
 check "allocate refuses a leader pick, naming it ($leader)" "$([ "$(iserr 4)" = true ] && grep -q "$leader" <<<"$leader_text" && grep -qi leader <<<"$leader_text"; echo $?)"
 check "allocate refuses 16 picks" "$([ "$(iserr 5)" = true ] && grep -q '16 picks' <<<"$(text 5)"; echo $?)"
 check "copies over group '$group' is a verdict, not an error" "$([ "$(iserr 6)" = false ]; echo $?)"
+
+# check_cube over the real group reports the unproduced mechanics (issue DeckDumpster/swu-cube#18).
+if [ "${SWU_CUBE_EXPECT_MECHANICS:-1}" != 0 ]; then
+  cube_text=$(text 7)
+  check "cube reports leader-mechanic on 2 packs" "$([ "$(grep -c 'FAIL pack .*: leader-mechanic' <<<"$cube_text")" -eq 2 ]; echo $?)"
+  check "cube reports pack-mechanic warnings on 3 packs" "$([ "$(grep -c 'WARN pack .*: pack-mechanic' <<<"$cube_text" | head -n 1)" -ge 3 ]; echo $?)"
+  check "cube reports cube-mechanic: force consumed by 7 cards, produced by 0" "$(grep -q 'FAIL cube-mechanic: force consumed by 7 cards, produced by 0' <<<"$cube_text"; echo $?)"
+fi
 
 # Every FAIL line names something: no empty lists, no empty slots.
 empty=$(for i in 2 3 4 5 6 7; do text "$i"; done | grep -E '^(deck [0-9]+: )?FAIL ' | grep -E '\[\]|\{\}|\(\)|: *$|: *,|, *$|""|'"''" || true)

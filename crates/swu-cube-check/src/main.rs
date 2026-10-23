@@ -195,7 +195,7 @@ fn allocate_value(doc: &serde_json::Value, verbose: bool, fill: bool) -> ExitCod
 }
 
 const USAGE: &str = "usage: swu-cube-check mcp   (serve check_cube over MCP stdio; the plugin's .mcp.json runs this)\n       swu-cube-check login [--site URL] [--client-id ID] | login --status
-       swu-cube-check pack --deck ID | cube --group NAME | copies --group NAME | allocate --group NAME | allocate --plan FILE   [--site URL]
+       swu-cube-check pack --deck ID | cube --group NAME | copies --group NAME | allocate --group NAME | allocate --plan FILE | show --deck ID   [--site URL]
   credential order: Claude Code's own MCP sign-in for the site (read-only, from ~/.claude/.credentials.json or the macOS
             Keychain; never written, its refresh token never used), then the login below
   login     sign in once in a browser (authorization code + PKCE); the refresh token is cached at
@@ -212,6 +212,7 @@ const USAGE: &str = "usage: swu-cube-check mcp   (serve check_cube over MCP stdi
             \"eligible\": [search_cards rows or card ids], \"picks\": [...], \"candidates\": [...]}]}; only picks and candidates reserve; rows carry type, cost and arenas, so a
             15-slot pack must be able to meet the pack skeleton from its pool, or gets a named shortfall; the plan invents no picks: --fill chooses 15 skeleton cards for each
             such pack and counts them as filled, reserved and contested like picks; `contested reserved` counts only copies more packs want than are owned, so 0 is normal
+  show      print the digest-verified get_deck document of --deck ID (scripts/release-smoke.sh reads card ids from it)
   FILE is read in place of stdin (`-` is stdin); exit 0 ok, 1 a rule failed, 2 unreadable input";
 
 fn usage() -> ExitCode {
@@ -305,7 +306,7 @@ fn fetched(args: &[String], r: &Remote, planned: bool, verbose: bool, fill: bool
     };
     let load = || -> Result<serde_json::Value, String> {
         match (mode.as_str(), &r.deck, &r.group, &r.plan) {
-            ("pack", Some(id), None, None) => {
+            ("pack" | "show", Some(id), None, None) => {
                 let id: i64 = id
                     .parse()
                     .map_err(|_| format!("--deck wants a deck id, not '{id}'"))?;
@@ -334,6 +335,10 @@ fn fetched(args: &[String], r: &Remote, planned: bool, verbose: bool, fill: bool
         Ok(v) => v,
         Err(e) => return fail(e),
     };
+    if mode == "show" {
+        println!("{value}");
+        return ExitCode::SUCCESS;
+    }
     if mode == "allocate" {
         return allocate_value(&value, verbose, fill);
     }

@@ -23,9 +23,16 @@ Then ask Claude to build or audit your SWU Jumpstart cube; the `swu-jumpstart-cu
 
 ### Releasing
 
+**No `v*` tag is cut until `scripts/release-smoke.sh <site>` passes on the candidate commit** against the Concierge's test tenant (prod dumpstar, or a realenv slot once env-1 works). It drives the built binary's MCP stdio server through real `check_cube` calls (tools/list against the skill, `pack` on a known-good saved deck, `allocate` with picks only for a draw card, a leader and 16 picks, `copies` over a group, and that no FAIL line is empty), signed in as users are, prints each call's output and exits non-zero on any failed assertion:
+
+```
+cargo build --release -p swu-cube-check
+SWU_CUBE_PACK_DECK=<known-good deck id> [SWU_CUBE_GROUP=<group>] scripts/release-smoke.sh https://<site>
+```
+
 Pushing a `v*` tag builds both targets and attaches them and a `SHA256SUMS` to the release; the workflow opens no pull request. To release: tag `v*`, wait for the Release workflow to go green, run `scripts/pin-release.sh <version>` (it downloads that release's `SHA256SUMS`, rewrites `VERSION` and the two `SHA256_` lines in the launcher, and refuses if a binary is missing from it), then land the resulting diff as a bead through the queue.
 
-The same binary has a CLI, for use outside Claude Code: `swu-cube-check pack --deck ID`, `cube --group NAME`, `copies --group NAME`, `allocate --group NAME`, and `login` (`--help` prints the usage).
+The same binary has a CLI, for use outside Claude Code: `swu-cube-check pack --deck ID`, `cube --group NAME`, `copies --group NAME`, `allocate --group NAME`, `show --deck ID` (prints the verified deck document), and `login` (`--help` prints the usage).
 
 ## Development
 

@@ -49,10 +49,11 @@ epic action) or health (30 HP vanilla).
 
 ### 4. The 15-card skeleton
 
-**Arena and type split**
+**Arena and type split** (the ranges are what `check_cube` enforces: "8" and "6+: 1" are exact counts,
+"3-4" and "4 to 5" are inclusive ranges; a count outside its range fails `arena` or `curve`)
 
 - 8 ground units.
-- 3-4 space units (non-negotiable minimum, so the combined deck can contest space).
+- 3-4 space units (at least 3 so the combined deck can contest space, at most 4).
 - 3-4 events or upgrades (unconditional removal, direct damage, stat buffs).
 
 **Resource curve**
@@ -64,7 +65,7 @@ epic action) or health (30 HP vanilla).
 | 3 | 4 to 5 | Critical. Maintains tempo on turn 2. |
 | 4 | 2 to 3 | Mid-game stabilizers and Sentinels. |
 | 5 | 1 to 2 | Heavy hitters before the Leader flips. |
-| 6+ | 1 | The Bomb: one massive unit. The checker's `curve` rule fails a 6+ card that is not a unit ("the 6+ slot must be a unit; <name> is an <type>"). |
+| 6+ | exactly 1 | The Bomb: one massive unit. The checker's `curve` rule fails a 6+ card that is not a unit ("the 6+ slot must be a unit; <name> is an <type>"). |
 
 ### 5. Command zone
 
@@ -125,8 +126,8 @@ To rename a pack or move it to another group, call `update_deck` (`{id, name?, g
 description?, notes?}`; absent keys stay, null clears). Never delete and recreate a deck: that loses
 its id.
 
-Mind the rate limit: `/mcp` allows about 120 tool calls a minute per sign-in. Use a fixed handful
-of searches per pack (step 3) and choose from the results yourself; never search once per card.
+Mind the rate limit: `/mcp` allows about 120 tool calls a minute per sign-in. Search once per
+distinct pool, not per pack (step 4), and choose from the results yourself; never search once per card.
 
 1. **`collection_summary`.** Learn what is owned and what is still available. A cube needs about
    20 Leaders, 40 bases (5 epic and 5 vanilla per color) and 300 draw cards. Leaders and non-base Rares and Legendaries are singleton,
@@ -145,18 +146,29 @@ of searches per pack (step 3) and choose from the results yourself; never search
    each pack naming the `queries` the checker runs and/or a saved `deck` id): it runs the pool searches itself and prints one line per pack
    (picks of slots, eligible pool, skeleton ok/unmet/not checked, contested reserved, short, lost) and `FAIL` lines
    where a pack cannot be filled. `verbose: true` adds the `reserve <card>: <packs>` lines, naming
-   the packs that hold each contested card; `fill: true` also chooses cards for open slots. Do not pick a
+   the packs that hold each contested card (more packs want it than there are copies), and
+   `shared <card>: <packs>` lines for cards two or more packs want that have a copy for each.
+   "nothing over-subscribed" means no card is wanted by more packs than there are copies; shared
+   cards can still be present; `fill: true` also chooses cards for open slots. Do not pick a
    card another pack holds the reservation for.
    To check planned picks before saving, give a plan pack `picks: [card ids]`. Picks are the 15 draw
    cards only, never the leader or bases: `allocate` refuses a pick that is a Leader or Base row, and
    more than 15 picks in a 15-slot pack. `fill: true` reports "15 filled" without naming the
    cards; it only proves the slots can be filled, so choose the cards yourself from the searches
-   and put them in `picks`. After saving the packs, run `allocate` on the group again.
+   and put them in `picks`. A 20-pack plan is about 12 KB of card ids that you chose, and
+   you pass it as the `plan` argument of the call. That is not copying tool output: the ids are your
+   own picks, not a `search_cards` or `get_deck` result pasted back in. Write the whole plan in one
+   call (leader and bases are not in `picks`); once the packs are saved, pass `group` instead and
+   the saved decks supply the picks. After saving the packs, run `allocate` on the group again.
    In a test group, name each pack uniquely (`<group> Pack <n>`). `set_deck_lines` refuses a pick no copy is left for;
    `check_cube` in `copies` mode (step 6) is the proof.
-4. **Fill each pack to the skeleton.** Four `search_cards` per pack cover the Leader's whole pool,
+4. **Fill each pack to the skeleton.** Four searches cover a Leader's whole pool,
    because section 2 allows four sets and no one query returns them all: color and alignment, color
-   only, alignment only, and no aspect at all. None returns Leaders or bases, which are chosen
+   only, alignment only, and no aspect at all. **Deduplicate: run each distinct query string once
+   and reuse its result for every pack that shares it** (the rate limit above). Packs of the same
+   color and alignment share all four; packs of one color share the color-only query; and the
+   alignment-only and no-aspect queries are shared more widely still. The first full 20-pack build
+   needed 15 distinct searches, not 80. None returns Leaders or bases, which are chosen
    separately. All pass `avail>=1` in the query (when `query_help` lists `avail`; otherwise
    pass `owned_only: true` and keep results whose `available_count` is at least 1), `limit: 100`.
    `<other colors>` is each color but the Leader's (`-a:<other color>` once per color), and `<other

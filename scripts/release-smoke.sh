@@ -31,8 +31,14 @@ leader=$(jq -r '[.cards | to_entries[] | select(.value.type == "Leader") | .key]
 draw=$(jq -r '. as $d | [$d.lines[].card_id | select(. as $i | ($d.cards[$i].type) as $t | ($t != "Leader" and $t != "Base"))][0] // empty' <<<"$doc")
 [ -n "$leader" ] && [ -n "$draw" ] || { echo "deck $deck has no leader and draw card" >&2; exit 2; }
 
-# 16 distinct draw-card ids, real where the deck has them, repeated otherwise: the count is what is refused.
-sixteen=$(jq -c --arg d "$draw" '[range(16) | $d]' <<<null)
+# 16 distinct draw-card ids: the deck's own draw cards, then its other draw cards, then SWU_CUBE_EXTRA_PICK
+# (a legal draw-card id not in the deck). The count is what is refused, so they must not collapse.
+sixteen=$(jq -c --arg x "${SWU_CUBE_EXTRA_PICK:-}" '. as $d
+  | [$d.lines[].card_id | select(. as $i | ($d.cards[$i].type) as $t | ($t != "Leader" and $t != "Base"))]
+    + [$d.cards | to_entries[] | select(.value.type != "Leader" and .value.type != "Base") | .key]
+    + [$x | select(. != "")]
+  | unique | .[:16]' <<<"$doc")
+[ "$(jq length <<<"$sixteen")" -eq 16 ] || { echo "deck $deck has fewer than 16 distinct draw cards; set SWU_CUBE_EXTRA_PICK to another legal draw-card id" >&2; exit 2; }
 
 reqs=$(mktemp)
 trap 'rm -f "$reqs"' EXIT
@@ -56,7 +62,7 @@ call "$(jq -cn --arg g "$group" '{mode:"cube",group:$g}')"                      
 replies=$("$bin" mcp --site "$site" <"$reqs")
 reply() { jq -c "select(.id == $1)" <<<"$replies"; }
 text() { reply "$1" | jq -r '.result.content[0].text // .error.message // "(no reply)"'; }
-iserr() { reply "$1" | jq -r '.result.isError // true'; }
+iserr() { reply "$1" | jq -r '.result.isError // false'; }
 
 echo "== tools/list"; reply 1 | jq .
 for n in 2 3 4 5 6 7; do echo "== call $n"; text "$n"; done

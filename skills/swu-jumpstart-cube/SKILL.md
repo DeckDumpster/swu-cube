@@ -30,8 +30,11 @@ copies and that no copy is in two decks. The `check_cube` tool (below) is what t
 1. **1 Leader.** It must be Heroism or Villainy: a **Neutral** leader (the data says `"alignment": "Neutral"`, such as
    Fennec Shand) does not lead a pack, and `check_cube` rejects one. A leader with an alignment but **no color aspect** (Anakin Skywalker, Tempted by the Dark Side, LOF-18: the official record lists Heroism only) cannot lead a pack either, since a pack is defined by its leader's color; the checker rejects it with that message, so pick another leader. It sets the alignment (Heroism/Villainy, the aspect names; `game.alignment` and the summary use them too) and the color aspect.
 Bases come in three kinds in the data: 25-HP with an epic action, 28-HP with an ability but
-no epic action (`collection_summary` calls these `ability`; never valid in a pack: `base-hp` rejects
-them), and 30-HP vanilla.
+no epic action (`collection_summary` calls these `ability`), and 30-HP vanilla. Every 28-HP base in the
+catalog is a Legends of the Force base ("When a friendly Force unit attacks: The Force is with you."),
+the main Force source in a collection with LOF. It may stand in for the 30-HP base (still the Leader's color)
+only when the pack holds a Force unit (trait Force) or a Force consumer; otherwise `base-hp` rejects it,
+naming why. Without one, a Force consumer may have no producer anywhere in the cube.
 
 2. **1 Epic Action Base (25 HP)**, strictly the Leader's color aspect: any 25-HP base of that aspect with an epic action.
 3. **1 Vanilla Base (30 HP)**, strictly the Leader's color aspect: any 30-HP base of that aspect without an epic action.
@@ -96,7 +99,8 @@ disqualifying: `check_cube` fails it `leader-mechanic`. A match pairs two random
 leader's own pack (and a cube-wide producer) is dependable, never a partner pack. A draw card that
 spends an unproduced resource is a `pack-mechanic` warning, and `cube` mode fails `cube-mechanic`
 ("force consumed by N cards, produced by 0") and reports, per such pack, the share of other packs
-that produce it. `allocate` warns the same for picks (give the pack's `leader` row for its front side).
+that produce it. The same holds for any resource the cube cannot produce: a leader or card spending it is the most
+parasitic pick there is, so check that the cube owns a producer (a Force base counts) before choosing the consumer. `allocate` warns the same for picks (give the pack's `leader` row for its front side).
 
 Top-tier universal examples: Sabine Wren (SOR-14), Boba Fett (SOR-15), Darth Vader, Dark Lord of the Sith (SOR-10). Leia Organa, Alliance General (SOR-9) is not one: her ability needs Rebel units.
 

@@ -121,6 +121,8 @@ struct Card {
     rules_text: String,
     /// `game.mechanics`, when the catalog carries it: (consumed, produced) mechanic names.
     mechanics: Option<(BTreeSet<String>, BTreeSet<String>)>,
+    /// `game.traits`, when the catalog carries it.
+    traits: BTreeSet<String>,
 }
 
 impl Card {
@@ -178,6 +180,7 @@ impl Card {
             mechanics: game.get("mechanics").filter(|m| m.is_object()).map(|m| {
                 (strings(&m["consumes"]), strings(&m["produces"]))
             }),
+            traits: strings(&game["traits"]),
         }
     }
 
@@ -371,10 +374,28 @@ pub fn check_pack(pack: &Pack) -> Vec<Failure> {
     let mut hps: Vec<i64> = bases.iter().filter_map(|b| b.hp).collect();
     hps.sort_unstable();
     if bases.len() == 2 && hps != [25, 30] {
-        out.push(fail(
-            "base-hp",
-            format!("bases have HP {hps:?}, not one 25 and one 30"),
-        ));
+        if hps == [25, 28] {
+            let force_reason = pack
+                .lines
+                .iter()
+                .filter_map(|l| pack.cards.get(&l.card_id))
+                .any(|c| {
+                    c.kind != "Base"
+                        && (c.traits.contains("Force")
+                            || c.touches(&MECHANICS[0], false))
+                });
+            if !force_reason {
+                out.push(fail(
+                    "base-hp",
+                    "a 28-HP ability base stands in for the 30-HP base only when the pack has a Force unit or a Force consumer, and this pack has neither",
+                ));
+            }
+        } else {
+            out.push(fail(
+                "base-hp",
+                format!("bases have HP {hps:?}, not one 25 and one 30 (or one 25 and one 28-HP Force base)"),
+            ));
+        }
     }
 
     let base_color = pack.leader().map(|(_, c)| c).or_else(|| {
@@ -1224,8 +1245,39 @@ mod tests {
     #[test]
     fn bases_must_be_25_and_30_hp() {
         let mut p = pack(1, "Heroism", "Command");
-        edit(&mut p, "B30", |c| c["game"]["hp"] = json!(28));
+        edit(&mut p, "B30", |c| c["game"]["hp"] = json!(27));
         assert!(rules(&p).contains(&"base-hp"));
+    }
+
+    fn force_base(p: &mut Value) {
+        edit(p, "B30", |c| {
+            c["game"]["hp"] = json!(28);
+            c["game"]["rules_text"] =
+                json!("When a friendly Force unit attacks: The Force is with you.");
+        });
+    }
+
+    #[test]
+    fn a_28_hp_base_without_a_force_reason_fails_naming_why() {
+        let mut p = pack(1, "Heroism", "Command");
+        force_base(&mut p);
+        let f = check_pack_value(&p).unwrap();
+        let m = f.iter().find(|f| f.rule == "base-hp").expect("base-hp");
+        assert!(m.message.contains("neither"), "{}", m.message);
+    }
+
+    #[test]
+    fn a_28_hp_force_base_passes_with_a_force_consumer_or_unit() {
+        let mut p = pack(1, "Heroism", "Command");
+        force_base(&mut p);
+        edit(&mut p, "C1-0", |c| {
+            c["game"]["rules_text"] = json!("Action [use the Force]: Heal 2.")
+        });
+        assert!(!rules(&p).contains(&"base-hp"), "{:?}", rules(&p));
+        let mut p = pack(1, "Heroism", "Command");
+        force_base(&mut p);
+        edit(&mut p, "C1-0", |c| c["game"]["traits"] = json!(["Force"]));
+        assert!(!rules(&p).contains(&"base-hp"));
     }
 
     #[test]

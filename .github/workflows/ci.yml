@@ -15,10 +15,12 @@ jobs:
       - uses: actions/checkout@v4
       - name: Rust checks
         run: |
-          if [ -f Cargo.toml ]; then
-            cargo fmt --check
-            cargo clippy --workspace --all-targets -- -D warnings
-            cargo test --workspace
-          else
-            echo "no Cargo workspace yet"
-          fi
+          cargo fmt --check
+          cargo clippy --workspace --all-targets -- -D warnings
+          cargo test --workspace
+      - name: Launcher tests
+        run: sh tests/launcher.sh
+      - name: Plugin manifests are JSON
+        run: |
+          python3 -m json.tool .claude-plugin/plugin.json >/dev/null
+          python3 -m json.tool .mcp.json >/dev/null

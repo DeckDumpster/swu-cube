@@ -1,0 +1,8 @@
+{
+  "name": "swu-cube",
+  "version": "0.1.0",
+  "description": "Build and check a Star Wars: Unlimited Jumpstart cube from your own collection on dumpstar",
+  "author": {"name": "Ryan Gantt"},
+  "repository": "https://github.com/DeckDumpster/swu-cube",
+  "license": "MIT"
+}

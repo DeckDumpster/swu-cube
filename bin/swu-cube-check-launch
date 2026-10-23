@@ -1,0 +1,56 @@
+#!/bin/sh
+# Runs the release-pinned swu-cube-check: downloads it on first use, verifies it against the
+# sha256 pinned below, caches it and execs it with this script's arguments. stdout belongs to the
+# program (MCP stdio), so everything here goes to stderr.
+#
+# The release workflow rewrites the three pinned lines below in a pull request per release.
+VERSION="0.0.0"
+SHA256_aarch64_apple_darwin="unpinned"
+SHA256_x86_64_unknown_linux_gnu="unpinned"
+
+set -eu
+
+die() {
+    printf 'swu-cube-check-launch: %s\n' "$*" >&2
+    exit 1
+}
+
+case "$(uname -s)/$(uname -m)" in
+    Darwin/arm64) target=aarch64-apple-darwin; want=$SHA256_aarch64_apple_darwin ;;
+    Linux/x86_64) target=x86_64-unknown-linux-gnu; want=$SHA256_x86_64_unknown_linux_gnu ;;
+    *) die "unsupported platform $(uname -s)/$(uname -m): releases exist for aarch64-apple-darwin and x86_64-unknown-linux-gnu" ;;
+esac
+
+[ "$want" != unpinned ] || die "no release is pinned in this plugin yet ($target)"
+
+sha256() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$1" | cut -d ' ' -f 1
+    else
+        shasum -a 256 "$1" | cut -d ' ' -f 1
+    fi
+}
+
+base=${SWU_CUBE_CHECK_RELEASE_BASE:-https://github.com/DeckDumpster/swu-cube/releases/download}
+cache=${CLAUDE_PLUGIN_DATA:-${XDG_CACHE_HOME:-${HOME:?HOME is not set}/.cache}/swu-cube-check}
+bin="$cache/swu-cube-check-$VERSION-$target"
+
+if [ ! -f "$bin" ]; then
+    mkdir -p "$cache"
+    tmp=$(mktemp "$cache/download.XXXXXX")
+    trap 'rm -f "$tmp"' EXIT
+    url="$base/v$VERSION/swu-cube-check-$target"
+    printf 'swu-cube-check-launch: downloading %s\n' "$url" >&2
+    curl -fsSL -o "$tmp" "$url" || die "cannot download $url"
+    got=$(sha256 "$tmp")
+    [ "$got" = "$want" ] || die "checksum mismatch for $url: pinned $want, got $got; refusing to run it"
+    chmod 755 "$tmp"
+    mv "$tmp" "$bin"
+    trap - EXIT
+fi
+
+# A cached binary is checked every time: the cache is a directory a user can write to.
+got=$(sha256 "$bin")
+[ "$got" = "$want" ] || die "checksum mismatch for cached $bin: pinned $want, got $got; refusing to run it (delete it to download again)"
+
+exec "$bin" "$@"

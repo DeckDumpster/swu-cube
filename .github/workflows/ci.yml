@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Rust checks
         run: |
           cargo fmt --check
@@ -26,3 +28,8 @@ jobs:
         run: |
           python3 -m json.tool .claude-plugin/plugin.json >/dev/null
           python3 -m json.tool .mcp.json >/dev/null
+      - name: Version bump tests
+        run: sh tests/check-version-bump.sh
+      - name: Plugin version is bumped
+        if: github.event_name == 'pull_request'
+        run: sh scripts/check-version-bump.sh "origin/${{ github.base_ref }}"

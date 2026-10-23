@@ -1,14 +1,13 @@
 name: Release
 
-# A v* tag builds both targets, attaches the binaries and a SHA256SUMS to the release, and opens a
-# pull request pinning that version and those checksums in bin/swu-cube-check-launch.
+# A v* tag builds both targets and attaches the binaries and a SHA256SUMS to the release. It ends
+# there: the pin lands through the queue, from scripts/pin-release.sh (see the README).
 on:
   push:
     tags: ["v*"]
 
 permissions:
   contents: write
-  pull-requests: write
 
 jobs:
   build:
@@ -52,22 +51,3 @@ jobs:
           cat SHA256SUMS
           gh release create "$GITHUB_REF_NAME" swu-cube-check-* SHA256SUMS \
             --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes
-      - name: Pin the release in the launcher
-        run: |
-          version=${GITHUB_REF_NAME#v}
-          sum() { grep " swu-cube-check-$1\$" dist/SHA256SUMS | cut -d ' ' -f 1; }
-          sed -i \
-            -e "s/^VERSION=.*/VERSION=\"$version\"/" \
-            -e "s/^SHA256_aarch64_apple_darwin=.*/SHA256_aarch64_apple_darwin=\"$(sum aarch64-apple-darwin)\"/" \
-            -e "s/^SHA256_x86_64_unknown_linux_gnu=.*/SHA256_x86_64_unknown_linux_gnu=\"$(sum x86_64-unknown-linux-gnu)\"/" \
-            bin/swu-cube-check-launch
-          git diff --stat
-          branch="release/pin-$GITHUB_REF_NAME"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout -b "$branch"
-          git commit -am "launcher: pin swu-cube-check $GITHUB_REF_NAME"
-          git push origin "$branch"
-          gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$branch" \
-            --title "launcher: pin swu-cube-check $GITHUB_REF_NAME" \
-            --body "Pins the launcher to the $GITHUB_REF_NAME release binaries and their SHA256SUMS."

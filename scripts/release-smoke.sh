@@ -81,6 +81,17 @@ for p in mode deck_ids group plan verbose fill site; do
 done
 check "tools/list offers every mode and argument the skill documents (missing:${bad:- none})" "$([ -z "$bad" ]; echo $?)"
 
+# The saved pack is named "<Leader name> - <Flavor>": the leader's name without its subtitle, then one to three words.
+pack_name=$(jq -r '.deck.name // ""' <<<"$doc")
+leader_name=$(jq -r --arg l "$leader" '.cards[$l].name // ""' <<<"$doc")
+name_ok=1
+if [ -n "$leader_name" ] && [ "${pack_name#"$leader_name" - }" != "$pack_name" ]; then
+  flavor=${pack_name#"$leader_name" - }
+  words=$(wc -w <<<"$flavor")
+  [ -n "$flavor" ] && [ "$words" -ge 1 ] && [ "$words" -le 3 ] && name_ok=0
+fi
+check "pack $deck is named '<Leader> - <Flavor>' (name: '$pack_name', leader: '$leader_name')" "$name_ok"
+
 check "pack on deck $deck returns ok" "$([ "$(text 2)" = ok ] && [ "$(iserr 2)" = false ]; echo $?)"
 check "allocate with a legal draw pick and no queries is not an error" "$([ "$(iserr 3)" = false ]; echo $?)"
 leader_text=$(text 4)

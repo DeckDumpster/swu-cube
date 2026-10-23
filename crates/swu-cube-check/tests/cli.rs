@@ -163,12 +163,33 @@ fn allocate_reserves_shared_cards_across_packs_and_names_a_shortfall() {
     let one = json!({"owned": {"A": 1}, "packs": [{"name": "P", "slots": 1, "eligible": ["A"], "picks": ["A"]}]});
     let (code, out) = run("allocate", &one.to_string());
     assert_eq!(code, 0, "{out}");
-    assert!(out.contains("no contested cards"), "{out}");
+    assert!(out.contains("nothing over-subscribed"), "{out}");
     doc["owned"]["Command Unit"] = json!(0);
     let (code, out) = run("allocate", &doc.to_string());
     assert_eq!(code, 1);
     assert!(
         out.contains("FAIL allocation:") && out.contains("Longbeam Cruiser"),
+        "{out}"
+    );
+}
+
+#[test]
+fn verbose_allocate_lists_a_card_shared_by_two_packs_that_has_a_copy_for_each() {
+    let doc = json!({
+        "owned": {"Shared Card": 2},
+        "packs": [
+            {"name": "Pack 1", "slots": 1, "eligible": ["Shared Card"], "picks": ["Shared Card"]},
+            {"name": "Pack 2", "slots": 1, "eligible": ["Shared Card"], "picks": ["Shared Card"]},
+        ]
+    });
+    let (code, out) = run("allocate", &doc.to_string());
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("nothing over-subscribed"), "{out}");
+    assert!(!out.contains("shared Shared Card"), "{out}");
+    let (code, out) = run_args(&["allocate", "--verbose"], &doc.to_string());
+    assert_eq!(code, 0, "{out}");
+    assert!(
+        out.contains("shared Shared Card: Pack 1, Pack 2 (2 copies owned"),
         "{out}"
     );
 }
@@ -317,7 +338,7 @@ fn twenty_empty_packs_over_a_small_shared_pool_report_contention() {
         out.contains("FAIL allocation:") && out.contains("competing packs"),
         "{out}"
     );
-    assert!(!out.contains("no contested cards\n"), "{out}");
+    assert!(!out.contains("nothing over-subscribed"), "{out}");
 }
 
 #[test]

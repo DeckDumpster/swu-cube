@@ -4,9 +4,9 @@
 # program (MCP stdio), so everything here goes to stderr.
 #
 # scripts/pin-release.sh rewrites the three pinned lines below for each release.
-VERSION="0.3.2"
-SHA256_aarch64_apple_darwin="c8e3d52504fe6e1548a8178299375141c878c0794907cd1d52f2ba5f95da9949"
-SHA256_x86_64_unknown_linux_gnu="04544f6ab71f986e5f6cdf575a6606508c7f513f15bad6796ce20fb05e82fad5"
+VERSION="0.3.4"
+SHA256_aarch64_apple_darwin="5d6247bee4b611556747f1642768db7cfbb89c196b5b180c8946b9b348ca7a70"
+SHA256_x86_64_unknown_linux_gnu="079a83ba2d3af43b2e3a4f45e29a55bf4c39843ee2f427067f044797fd5d0ca7"
 
 set -eu
 

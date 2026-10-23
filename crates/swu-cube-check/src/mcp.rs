@@ -23,7 +23,7 @@ fn tool() -> Value {
                 "mode": {"type": "string", "enum": ["pack", "cube", "copies", "allocate"]},
                 "deck_ids": {"type": "array", "items": {"type": "integer"}, "description": "Saved deck ids."},
                 "group": {"type": "string", "description": "A deck group: every deck in it."},
-                "plan": {"type": "object", "description": "allocate only: a plan whose `packs` name `queries` (searches the checker runs) and/or `deck` (a saved deck id), as `allocate --plan FILE` reads."},
+                "plan": {"type": "object", "description": "allocate only: a plan whose `packs` name `queries` (searches the checker runs) and/or `deck` (a saved deck id), as `allocate --plan FILE` reads. A pack may add `picks` (card ids): its 15 draw cards only, never the leader or bases."},
                 "verbose": {"type": "boolean", "description": "allocate only: add every reserve line."},
                 "fill": {"type": "boolean", "description": "allocate only: choose cards for open slots."},
                 "site": {"type": "string", "description": "Override the dumpstar site URL."}
@@ -223,6 +223,15 @@ mod tests {
                 assert!(props.contains(&key), "SKILL.md names argument `{key}`");
             }
         }
+        // `picks` is a plan-pack field the skill documents; the plan schema describes it.
+        assert!(skill.contains("`picks: [card ids]`"), "SKILL.md omits the picks field");
+        assert!(
+            schema["properties"]["plan"]["description"]
+                .as_str()
+                .unwrap()
+                .contains("`picks`"),
+            "the plan schema omits `picks`"
+        );
         // The arguments paragraph lists exactly the schema's properties and modes.
         let para = skill
             .lines()

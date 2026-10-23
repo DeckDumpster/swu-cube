@@ -143,3 +143,66 @@ fn no_sign_in_is_an_error_naming_login() {
     let (msg, is_error) = text(&r[0]);
     assert!(is_error && msg.contains("login"), "{msg}");
 }
+
+#[test]
+fn check_cube_allocate_gives_the_text_the_cli_prints() {
+    let dir = tempfile::tempdir().unwrap();
+    let f = serve(cube(), true);
+    let ms = (far_future() + 3600) * 1000;
+    let claude = claude_store(dir.path(), &f, ms);
+
+    let r = session(
+        &claude,
+        &f.base,
+        &[
+            call(
+                1,
+                json!({"mode": "allocate", "group": "swu-jumpstart-cube"}),
+            ),
+            call(
+                2,
+                json!({"mode": "allocate", "group": "swu-jumpstart-cube", "verbose": true, "fill": true}),
+            ),
+            call(
+                3,
+                json!({"mode": "allocate", "plan": {"packs": [{"name": "A", "queries": ["t:unit"]}]}}),
+            ),
+            call(4, json!({"mode": "allocate"})),
+            call(
+                5,
+                json!({"mode": "allocate", "group": "g", "deck_ids": [1]}),
+            ),
+        ],
+    );
+
+    let (code, out) = cli(
+        &claude,
+        &f.base,
+        &["allocate", "--group", "swu-jumpstart-cube"],
+    );
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("Pack 1: 15 of 15 picks"), "{out}");
+    assert_eq!(text(&r[0]), (out.trim_end(), false));
+
+    let (code, out) = cli(
+        &claude,
+        &f.base,
+        &[
+            "allocate",
+            "--group",
+            "swu-jumpstart-cube",
+            "--verbose",
+            "--fill",
+        ],
+    );
+    assert!(code == 0 || code == 1, "{out}");
+    assert_eq!(text(&r[1]), (out.trim_end(), false));
+
+    let (plan, is_error) = text(&r[2]);
+    assert!(!is_error && plan.contains("\nA: 0 of 15 picks"), "{plan}");
+
+    let (msg, is_error) = text(&r[3]);
+    assert!(is_error && msg.contains("group and/or a plan"), "{msg}");
+    let (msg, is_error) = text(&r[4]);
+    assert!(is_error && msg.contains("not deck_ids"), "{msg}");
+}

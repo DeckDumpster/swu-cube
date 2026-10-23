@@ -102,6 +102,8 @@ spends an unproduced resource is a `pack-mechanic` warning, and `cube` mode fail
 that produce it. The same holds for any resource the cube cannot produce: a leader or card spending it is the most
 parasitic pick there is, so check that the cube owns a producer (a Force base counts) before choosing the consumer. `allocate` warns the same for picks (give the pack's `leader` row for its front side).
 
+**Force leaders.** A leader whose undeployed side spends the Force is effectively unplayable in this format. Its own pack's bases never play with it (§3: the Leader comes from pack A, the Base from pack B), and a partner's base is random: a Force base reaches the leader only if the random partner pack carries one, which holds for every pack only if every pack has one, and a collection cannot support that (one 2026-10-23 collection had 6 Force bases for a 20-pack cube, none of them Vigilance). Only the leader's own draw cards are dependable, since all 15 are always in the combined 30-card deck. Choose such a leader only when its own pack carries at least two non-base Force producers (Directed by the Force, Youngling Padawan, Acolyte of the Beyond), and prefer a leader with no Force cost: each producer gives one use, so even with 2-3 of them a front-side "Exhaust, use the Force" Action fires perhaps twice a game. The same reasoning applies to any resource a leader spends: count producers among the leader's own draw cards, never its bases. The 28-HP base allowance helps draw cards and partners, never the pack's own leader.
+
 Top-tier universal examples: Sabine Wren (SOR-14), Boba Fett (SOR-15), Darth Vader, Dark Lord of the Sith (SOR-10). Leia Organa, Alliance General (SOR-9) is not one: her ability needs Rebel units.
 
 ### 6. Archetype blueprints
@@ -116,7 +118,7 @@ Smuggle, Raid) that improve whatever pack they meet.
 5. **Aggressive Assault** (Any / Aggression): direct damage and raid. Sabine Wren/Disruptor Sniper, Open Fire, Keep Fighting.
 6. **Starfighter Fleet** (Any / flex aspect): space skew. At least 6 space units (A-Wings/Interceptors), Wing Leader, Tactical Advantage.
 
-The archetypes and the leader guidance are advice. `check_cube` does not test them.
+The archetypes and the leader guidance are advice. "Grand Inquisitor is parasitic" is true for the reason the Force leaders paragraph gives: what the leader spends must come from its own pack's draw cards, never its bases or a partner. `check_cube` does not test them.
 
 ## Never save tool output to files
 

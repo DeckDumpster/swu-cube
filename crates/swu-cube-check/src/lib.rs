@@ -1080,6 +1080,39 @@ mod tests {
         assert_eq!(listed, DIGEST_CARD_FIELDS.to_vec());
     }
 
+    fn leader_guidance() -> &'static str {
+        include_str!("../../../skills/swu-jumpstart-cube/SKILL.md")
+    }
+
+    #[test]
+    fn the_skill_says_why_bases_cannot_supply_a_leaders_force() {
+        let skill = leader_guidance();
+        let para = skill
+            .lines()
+            .find(|l| l.starts_with("**Force leaders.**"))
+            .expect("SKILL.md lacks the Force leaders paragraph");
+        for needle in [
+            "never play with it",
+            "partner's base is random",
+            "at least two non-base Force producers",
+            "prefer a leader with no Force cost",
+            "draw cards, never its bases",
+        ] {
+            assert!(para.contains(needle), "Force leaders paragraph omits `{needle}`");
+        }
+    }
+
+    #[test]
+    fn the_archetype_guidance_names_why_a_parasitic_leader_is_parasitic() {
+        let skill = leader_guidance();
+        let line = skill
+            .lines()
+            .find(|l| l.starts_with("The archetypes and the leader guidance are advice"))
+            .expect("SKILL.md lacks the archetype advice line");
+        assert!(line.contains("Grand Inquisitor"), "archetype guidance omits the parasitic example");
+        assert!(line.contains("Force leaders"), "archetype guidance does not point at the Force leaders rule");
+    }
+
     #[test]
     fn the_shared_vector_digests_to_its_pinned_value() {
         let lines: Value = serde_json::from_str(VECTOR_LINES).unwrap();

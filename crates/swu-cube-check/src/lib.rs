@@ -555,11 +555,12 @@ fn mechanic_failures(pack: &Pack) -> Vec<Failure> {
         .filter_map(|l| pack.cards.get(&l.card_id))
         .collect();
     for m in &MECHANICS {
-        if cards.iter().any(|c| c.touches(m, true)) {
-            continue;
-        }
+        // A leader never plays with its own pack's bases (the base comes from the partner pack),
+        // and a draw card has its own base only when this pack supplies it.
+        let dependable = cards.iter().any(|c| c.kind != "Base" && c.touches(m, true));
+        let base_only = !dependable && cards.iter().any(|c| c.touches(m, true));
         for c in &cards {
-            if !c.touches(m, false) {
+            if dependable || !c.touches(m, false) {
                 continue;
             }
             if c.kind == "Leader" {
@@ -571,12 +572,14 @@ fn mechanic_failures(pack: &Pack) -> Vec<Failure> {
                     ),
                 ));
             } else if c.kind != "Base" {
+                let why = if base_only {
+                    "only the pack's base produces it, and that base is in play in about half of pairings"
+                } else {
+                    "nothing in the pack produces it"
+                };
                 out.push(warn(
                     "pack-mechanic",
-                    format!(
-                        "'{}' spends {}, and nothing in the pack produces it",
-                        c.name, m.name
-                    ),
+                    format!("'{}' spends {}, and {why}", c.name, m.name),
                 ));
             }
         }
@@ -626,12 +629,18 @@ fn cube_mechanic_findings(packs: &[Pack]) -> Vec<Failure> {
             ));
         }
         let producing: Vec<bool> = packs.iter().map(|p| in_pack(p, m, true) > 0).collect();
-        for (i, p) in packs.iter().enumerate() {
-            if in_pack(p, m, false) == 0 || producing[i] {
+        for p in packs.iter() {
+            let own_draw = p
+                .lines
+                .iter()
+                .filter_map(|l| p.cards.get(&l.card_id))
+                .any(|c| c.kind != "Base" && c.touches(m, true));
+            if in_pack(p, m, false) == 0 || own_draw {
                 continue;
             }
             let others = packs.len() - 1;
-            let covered = producing.iter().filter(|b| **b).count();
+            let own = in_pack(p, m, true) > 0;
+            let covered = producing.iter().filter(|b| **b).count() - usize::from(own);
             out.push(warn(
                 "mechanic-report",
                 format!(
@@ -1753,6 +1762,17 @@ mod tests {
             f.iter().any(|f| f.rule == "mechanic-report" && f.message.contains("1 of 19")),
             "{f:?}"
         );
+    }
+
+    #[test]
+    fn a_leader_is_not_covered_by_its_own_packs_base() {
+        let mut p = pack(1, "Heroism", "Command");
+        force_leader(&mut p);
+        edit(&mut p, "B30-1", |c| {
+            c["game"]["rules_text"] = json!("When a friendly Force unit attacks: The Force is with you.")
+        });
+        let f = check_pack_value(&p).unwrap();
+        assert!(f.iter().any(|f| f.rule == "leader-mechanic" && !f.warn), "{f:?}");
     }
 
     #[test]

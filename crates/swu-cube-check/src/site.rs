@@ -604,13 +604,23 @@ impl Source for Site {
     }
 
     fn search(&self, q: &str) -> Result<Vec<Value>, String> {
+        self.search_with(q, true)
+    }
+
+    fn lookup(&self, q: &str) -> Result<Vec<Value>, String> {
+        self.search_with(q, false)
+    }
+}
+
+impl Site {
+    fn search_with(&self, q: &str, owned_only: bool) -> Result<Vec<Value>, String> {
         let mut rows = Vec::new();
         let mut cursor: Option<String> = None;
         for _ in 0..MAX_PAGES {
             let mut query = vec![
                 ("q", q.to_string()),
                 ("limit", PAGE.to_string()),
-                ("owned_only", "true".into()),
+                ("owned_only", owned_only.to_string()),
             ];
             if let Some(c) = &cursor {
                 query.push(("cursor", c.clone()));

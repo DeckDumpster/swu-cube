@@ -447,14 +447,25 @@ pub fn allocate_value<'a>(doc: &'a Value, fill: bool) -> Result<Plan, String> {
             .filter(|&&q| q != p)
             .map(|&q| names[q].as_str())
             .collect();
+        let why = if cards.is_empty() {
+            "its eligible pool is empty (no queries or deck gave it any card)".to_string()
+        } else if competing.is_empty() {
+            format!(
+                "the cards it can use are all spoken for: {}; no other pack competes for them",
+                cards.join(", ")
+            )
+        } else {
+            format!(
+                "the cards it can use are all spoken for: {}; competing packs: {}",
+                cards.join(", "),
+                competing.join(", ")
+            )
+        };
         failures.push(fail(
             "allocation",
             format!(
-                "{} is {short} card(s) short of {} even with every copy reassigned; the cards it can use are all spoken for: {}; competing packs: {}",
-                names[p],
-                slots[p],
-                cards.join(", "),
-                competing.join(", ")
+                "{} is {short} card(s) short of {} even with every copy reassigned; {why}",
+                names[p], slots[p]
             ),
         ));
     }

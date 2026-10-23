@@ -16,6 +16,10 @@ pub trait Source {
     fn deck(&self, id: i64) -> Result<Value, String>;
     /// Every row of `search_cards` for `q` over the owned cards, all pages.
     fn search(&self, q: &str) -> Result<Vec<Value>, String>;
+    /// Every row for `q` over the whole catalogue, owned or not.
+    fn lookup(&self, q: &str) -> Result<Vec<Value>, String> {
+        self.search(q)
+    }
 }
 
 /// The decks of a group as pack documents; an empty group is an error, never a vacuous `ok`.
@@ -168,6 +172,31 @@ pub fn allocation(
                     rows.push(row);
                 }
             }
+            // A pick no query fetched is resolved against the catalogue, so a leader or base is
+            // refused whether or not a query returned it.
+            let known: std::collections::BTreeSet<String> = rows
+                .iter()
+                .filter_map(|r| id_of(r).map(str::to_string))
+                .collect();
+            let unknown: Vec<&str> = pack["picks"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|c| c.as_str())
+                .filter(|id| !known.contains(*id))
+                .collect();
+            if !unknown.is_empty() {
+                let q = unknown
+                    .iter()
+                    .map(|id| format!("id:{id}"))
+                    .collect::<Vec<_>>()
+                    .join(" or ");
+                for row in src.lookup(&format!("{q} avail>=0"))? {
+                    if !is_draw(&row) && id_of(&row).is_some_and(|id| unknown.contains(&id)) {
+                        rows.push(row);
+                    }
+                }
+            }
             if let Some(o) = pack.as_object_mut() {
                 o.remove("queries");
                 o.remove("deck");
@@ -253,4 +282,35 @@ pub fn fill_owned(src: &dyn Source, doc: &mut Value) -> Result<usize, String> {
         }
     }
     Ok(missing.len())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct Catalogue;
+
+    impl Source for Catalogue {
+        fn list_group(&self, _: &str) -> Result<Vec<i64>, String> {
+            Ok(vec![])
+        }
+        fn deck(&self, _: i64) -> Result<Value, String> {
+            Err("no deck".into())
+        }
+        fn search(&self, _: &str) -> Result<Vec<Value>, String> {
+            Ok(vec![])
+        }
+        fn lookup(&self, q: &str) -> Result<Vec<Value>, String> {
+            assert!(q.contains("id:SOR-14"), "{q}");
+            Ok(vec![json!({"id": "SOR-14", "name": "Sabine Wren", "type": "Leader"})])
+        }
+    }
+
+    #[test]
+    fn a_leader_in_picks_is_refused_though_no_query_fetched_it() {
+        let plan = json!({"packs": [{"picks": ["SOR-14"]}]});
+        let doc = allocation(&Catalogue, None, Some(&plan)).unwrap();
+        let err = crate::allocate::allocate_value(&doc, false).err().unwrap();
+        assert!(err.contains("SOR-14") && err.contains("leader"), "{err}");
+    }
 }

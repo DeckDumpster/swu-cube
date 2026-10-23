@@ -24,7 +24,7 @@ fn tool() -> Value {
                 "deck_ids": {"type": "array", "items": {"type": "integer"}, "description": "Saved deck ids."},
                 "group": {"type": "string", "description": "A deck group: every deck in it."},
                 "plan": {"type": "object", "description": "allocate only: a plan whose `packs` name `queries` (searches the checker runs) and/or `deck` (a saved deck id), as `allocate --plan FILE` reads. A pack may add `picks` (card ids): its 15 draw cards only, never the leader or bases."},
-                "verbose": {"type": "boolean", "description": "allocate only: add every reserve line."},
+                "verbose": {"type": "boolean", "description": "allocate only: add every reserve line and every shared (not over-subscribed) card."},
                 "fill": {"type": "boolean", "description": "allocate only: choose cards for open slots."},
                 "site": {"type": "string", "description": "Override the dumpstar site URL."}
             },

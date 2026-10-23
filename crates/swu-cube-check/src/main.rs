@@ -208,7 +208,7 @@ const USAGE: &str = "usage: swu-cube-check mcp   (serve check_cube over MCP stdi
   cube      check a 20-pack cube: a cube document, or one pack file per deck
   copies    only the copy-count check (cube-copies) over any number of pack files, for a partial build
   allocate  plan copies across the cube (one line per pack: picks of slots (+ filled with --fill), eligible pool, skeleton ok/unmet/not checked, contested reserved, short, lost; --verbose adds every
-            reserve line; a Leader or non-base Rare/Legendary goes to at most one pack): {\"owned\": {id: copies}, \"packs\": [{\"name\", \"slots\": 15,
+            reserve line and every shared card; a Leader or non-base Rare/Legendary goes to at most one pack): {\"owned\": {id: copies}, \"packs\": [{\"name\", \"slots\": 15,
             \"eligible\": [search_cards rows or card ids], \"picks\": [...], \"candidates\": [...]}]}; only picks and candidates reserve; rows carry type, cost and arenas, so a
             15-slot pack must be able to meet the pack skeleton from its pool, or gets a named shortfall; the plan invents no picks: --fill chooses 15 skeleton cards for each
             such pack and counts them as filled, reserved and contested like picks; `contested reserved` counts only copies more packs want than are owned, so 0 is normal

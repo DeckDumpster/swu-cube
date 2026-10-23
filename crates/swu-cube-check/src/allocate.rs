@@ -38,6 +38,9 @@ pub struct Plan {
     pub reservations: BTreeMap<String, Vec<String>>,
     /// card id -> (copies owned, packs wanting it), for every contested card.
     pub contested: BTreeMap<String, (usize, usize)>,
+    /// card id -> (copies owned, the packs wanting it), for every card two or more packs want that
+    /// has a copy for each: shared but not over-subscribed, so it is not reserved.
+    pub shared: BTreeMap<String, (usize, Vec<String>)>,
     pub failures: Vec<Failure>,
     /// Names of packs that are saved decks (`"saved": true`): they hold their copies outright.
     pub saved: BTreeSet<String>,
@@ -85,11 +88,19 @@ pub fn render(plan: &Plan, verbose: bool) -> (i32, String) {
             .iter()
             .filter(|s| s.picks == 0 && s.filled == 0)
             .count();
+        let shared = plan.shared.len();
+        let note = if shared > 0 {
+            format!(
+                "; {shared} card(s) are wanted by more than one pack, each with a copy for every pack (--verbose lists them)"
+            )
+        } else {
+            String::new()
+        };
         if bare == 0 {
-            say!("no contested cards");
+            say!("nothing over-subscribed: no card is wanted by more packs than there are copies{note}");
         } else {
             say!(
-                "no contested cards among picks ({bare} pack(s) have no picks; contention among their pools is not measured unless --fill)"
+                "nothing over-subscribed among picks ({bare} pack(s) have no picks; contention among their pools is not measured unless --fill){note}"
             );
         }
     }
@@ -148,6 +159,15 @@ pub fn render(plan: &Plan, verbose: bool) -> (i32, String) {
                 "reserve {card}: {} (contested: {copies} cop{}, {wanting} packs)",
                 packs.join(", "),
                 if copies == 1 { "y" } else { "ies" }
+            );
+        }
+    }
+    if verbose {
+        for (card, (copies, packs)) in &plan.shared {
+            say!(
+                "shared {card}: {} ({copies} cop{} owned, one for each, nothing reserved)",
+                packs.join(", "),
+                if *copies == 1 { "y" } else { "ies" }
             );
         }
     }
@@ -393,6 +413,16 @@ pub fn allocate_value<'a>(doc: &'a Value, fill: bool) -> Result<Plan, String> {
             }
         }
     }
+    let shared: BTreeMap<String, (usize, Vec<String>)> = demand
+        .iter()
+        .filter(|(c, ps)| ps.len() >= 2 && ps.len() <= copies_owned[*c])
+        .map(|(c, ps)| {
+            (
+                c.to_string(),
+                (copies_owned[c], ps.iter().map(|&p| names[p].clone()).collect()),
+            )
+        })
+        .collect();
     demand.retain(|c, ps| ps.len() > copies_owned[c]);
     let contested: BTreeMap<String, (usize, usize)> = demand
         .iter()
@@ -579,6 +609,7 @@ pub fn allocate_value<'a>(doc: &'a Value, fill: bool) -> Result<Plan, String> {
     Ok(Plan {
         reservations,
         contested,
+        shared,
         failures,
         saved: (0..packs.len())
             .filter(|&p| saved[p])

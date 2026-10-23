@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust checks
+        run: |
+          if [ -f Cargo.toml ]; then
+            cargo fmt --check
+            cargo clippy --workspace --all-targets -- -D warnings
+            cargo test --workspace
+          else
+            echo "no Cargo workspace yet"
+          fi

@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "dumpstar": {
+      "type": "http",
+      "url": "https://star.dumpster.cards/mcp"
+    },
+    "swu-cube-check": {
+      "type": "stdio",
+      "command": "${CLAUDE_PLUGIN_ROOT}/bin/swu-cube-check-launch",
+      "args": ["mcp"]
+    }
+  }
+}

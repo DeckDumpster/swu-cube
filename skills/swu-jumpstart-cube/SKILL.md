@@ -126,6 +126,18 @@ To rename a pack or move it to another group, call `update_deck` (`{id, name?, g
 description?, notes?}`; absent keys stay, null clears). Never delete and recreate a deck: that loses
 its id.
 
+**Pack names.** Each saved pack is named `<Leader> - <Flavor>`, never `Pack <n>` or `Deck <n>`.
+`<Leader>` is the leader's card name without its subtitle ("Darth Vader", never "Darth Vader, Dark
+Lord of the Sith": the card's `name` field, not `name, subtitle`). `<Flavor>` is one to three words
+describing how the pack plays, drawn from the cards actually in it ("Ground Swarm", "Bounty
+Hunters", "Big Spenders"). Names are unique within a group: two packs with the same leader are told
+apart by their flavor. Choose the flavor after the 15 draw cards are picked, so it describes them.
+
+**Renaming an existing cube.** When asked to "rename my packs" on an already-built group,
+`list_decks` the group, `get_deck` each pack (one at a time) to read its leader and cards, pick the
+flavor, and call `update_deck` with `{id, name}` only. This keeps ids and lines; do not rebuild,
+delete or call `set_deck_lines`. Check the new names are unique within the group before finishing.
+
 Mind the rate limit: `/mcp` allows about 120 tool calls a minute per sign-in. Search once per
 distinct pool, not per pack (step 4), and choose from the results yourself; never search once per card.
 
@@ -160,7 +172,7 @@ distinct pool, not per pack (step 4), and choose from the results yourself; neve
    own picks, not a `search_cards` or `get_deck` result pasted back in. Write the whole plan in one
    call (leader and bases are not in `picks`); once the packs are saved, pass `group` instead and
    the saved decks supply the picks. After saving the packs, run `allocate` on the group again.
-   In a test group, name each pack uniquely (`<group> Pack <n>`). `set_deck_lines` refuses a pick no copy is left for;
+   In a test group, prefix each pack name with the group name (`<group> - <Leader> - <Flavor>`) so a test build never collides with the real cube. `set_deck_lines` refuses a pick no copy is left for;
    `check_cube` in `copies` mode (step 6) is the proof.
 4. **Fill each pack to the skeleton.** Four searches cover a Leader's whole pool,
    because section 2 allows four sets and no one query returns them all: color and alignment, color
@@ -192,7 +204,7 @@ distinct pool, not per pack (step 4), and choose from the results yourself; neve
 5. **Save the pack by card ids, then check the saved deck.** A planned pack is named by card
    ids only: the Leader, the two bases and the 15 draw ids, each with a qty of 1. Write no card
    objects and no files. `create_deck` (`format`: `SWU Jumpstart Cube`, `group`: the group name
-   (the same for all 20 packs), `name`: `Pack <n>`), then `set_deck_lines` with the 18
+   (the same for all 20 packs), `name`: the pack's name, see **Pack names** below), then `set_deck_lines` with the 18
    `{card_id, qty: 1}` lines. A refusal says which lines are short and changes nothing: swap those
    cards and retry. Then call `check_cube` with `mode: pack` and `deck_ids: [<id>]`: the checker fetches the deck and its
    card data itself. Fix every `FAIL` line with `set_deck_lines` on the same deck (it replaces the

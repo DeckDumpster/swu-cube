@@ -30,7 +30,7 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use serde_json::Value;
 
-use crate::{CURVE, DRAW_CARDS, Failure, GROUND_UNITS, fail};
+use crate::{CURVE, DRAW_CARDS, Failure, GROUND_UNITS, fail, warn};
 
 pub struct Plan {
     /// card id -> the packs it is reserved to, in pack order.
@@ -82,7 +82,7 @@ pub fn render(plan: &Plan, verbose: bool) -> (i32, String) {
             out.push('\n');
         }};
     }
-    if plan.reservations.is_empty() && plan.failures.is_empty() {
+    if plan.reservations.is_empty() && plan.failures.iter().all(|f| f.warn) {
         let bare = plan
             .summary
             .iter()
@@ -172,13 +172,14 @@ pub fn render(plan: &Plan, verbose: bool) -> (i32, String) {
         }
     }
     for f in &plan.failures {
-        say!("FAIL {f}");
+        say!("{} {f}", if f.warn { "WARN" } else { "FAIL" });
     }
-    if plan.failures.is_empty() {
+    let hard = plan.failures.iter().any(|f| !f.warn);
+    if !hard {
         say!("ok");
     }
     (
-        i32::from(!plan.failures.is_empty()),
+        i32::from(hard),
         out.trim_end().to_string(),
     )
 }
@@ -263,6 +264,7 @@ pub fn allocate_value<'a>(doc: &'a Value, fill: bool) -> Result<Plan, String> {
     let mut skel: Vec<Option<Vec<(&str, Meta)>>> = Vec::new();
     let mut wants: Vec<BTreeSet<&str>> = Vec::new();
     let mut pick_n: Vec<usize> = Vec::new();
+    let mut mechanic_warnings: Vec<Failure> = Vec::new();
     let mut pick_set: Vec<BTreeSet<&str>> = Vec::new();
     let mut saved: Vec<bool> = Vec::new();
     let mut pool_n: Vec<usize> = Vec::new();
@@ -324,6 +326,24 @@ pub fn allocate_value<'a>(doc: &'a Value, fill: bool) -> Result<Plan, String> {
                 slots[i]
             ));
         }
+        let row_of = |id: &str| -> Option<&Value> {
+            p.get("picks")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .chain(e.iter())
+                .find(|r| r.get("id").and_then(Value::as_str).map(canon_id) == Some(id))
+        };
+        let mut planned: Vec<&Value> = picked.iter().filter_map(|id| row_of(id)).collect();
+        planned.extend(p.get("leader").filter(|l| l.is_object()));
+        for (card, mechanic) in crate::unproduced_consumers(&planned) {
+            mechanic_warnings.push(warn(
+                "pack-mechanic",
+                format!(
+                    "{name} picks '{card}', which spends {mechanic}, and no pick or leader in the pack produces it"
+                ),
+            ));
+        }
         pick_n.push(picked.len());
         pick_set.push(picked);
         saved.push(p.get("saved").and_then(Value::as_bool).unwrap_or(false));
@@ -362,6 +382,7 @@ pub fn allocate_value<'a>(doc: &'a Value, fill: bool) -> Result<Plan, String> {
     }
 
     let mut failures = Vec::new();
+    failures.extend(mechanic_warnings);
     let mut unsolved_packs: BTreeSet<usize> = BTreeSet::new();
     let mut fixed: BTreeMap<&str, BTreeSet<usize>> = BTreeMap::new();
     let skeleton_packs: Vec<usize> = (0..packs.len()).filter(|&p| skel[p].is_some()).collect();
@@ -1249,5 +1270,19 @@ mod tests {
             m.contains("Hold 2") && m.contains("X") && m.contains("held by Hold 1"),
             "{m}"
         );
+    }
+
+    #[test]
+    fn a_pick_spending_an_unproduced_mechanic_warns_without_failing() {
+        let row = |id: &str, text: &str| json!({"id": id, "type": "Unit", "cost": 2, "game": {"arenas": ["Ground"], "rules_text": text}});
+        let doc = json!({"owned": {"A": 1, "B": 1}, "packs": [{"name": "Pack 1", "slots": 2,
+            "eligible": [row("A", "Action [use the Force]: heal"), row("B", "The Force is with you.")],
+            "picks": ["A"]}]});
+        let plan = allocate_value(&doc, false).unwrap();
+        assert!(plan.failures.iter().any(|f| f.rule == "pack-mechanic" && f.warn));
+        assert_eq!(render(&plan, false).0, 0);
+        let mut both = doc.clone();
+        both["packs"][0]["picks"] = json!(["A", "B"]);
+        assert!(allocate_value(&both, false).unwrap().failures.is_empty());
     }
 }

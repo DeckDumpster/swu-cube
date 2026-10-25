@@ -97,7 +97,9 @@ pub fn render(plan: &Plan, verbose: bool) -> (i32, String) {
             String::new()
         };
         if bare == 0 {
-            say!("nothing over-subscribed: no card is wanted by more packs than there are copies{note}");
+            say!(
+                "nothing over-subscribed: no card is wanted by more packs than there are copies{note}"
+            );
         } else {
             say!(
                 "nothing over-subscribed among picks ({bare} pack(s) have no picks; contention among their pools is not measured unless --fill){note}"
@@ -178,10 +180,7 @@ pub fn render(plan: &Plan, verbose: bool) -> (i32, String) {
     if !hard {
         say!("ok");
     }
-    (
-        i32::from(hard),
-        out.trim_end().to_string(),
-    )
+    (i32::from(hard), out.trim_end().to_string())
 }
 
 pub fn allocate_value<'a>(doc: &'a Value, fill: bool) -> Result<Plan, String> {
@@ -440,7 +439,10 @@ pub fn allocate_value<'a>(doc: &'a Value, fill: bool) -> Result<Plan, String> {
         .map(|(c, ps)| {
             (
                 c.to_string(),
-                (copies_owned[c], ps.iter().map(|&p| names[p].clone()).collect()),
+                (
+                    copies_owned[c],
+                    ps.iter().map(|&p| names[p].clone()).collect(),
+                ),
             )
         })
         .collect();
@@ -1114,7 +1116,8 @@ mod tests {
     #[test]
     fn picks_that_include_a_leader_or_too_many_cards_are_refused() {
         let mut doc = skeleton_doc(1);
-        let leader = json!({"id": "L-1", "type": "Leader", "cost": 3, "game": {"arenas": ["Ground"]}});
+        let leader =
+            json!({"id": "L-1", "type": "Leader", "cost": 3, "game": {"arenas": ["Ground"]}});
         doc["packs"][0]["picks"] = json!([leader]);
         let err = allocate_value(&doc, false).err().unwrap();
         assert!(err.contains("L-1") && err.contains("leader"), "{err}");
@@ -1279,7 +1282,11 @@ mod tests {
             "eligible": [row("A", "Action [use the Force]: heal"), row("B", "The Force is with you.")],
             "picks": ["A"]}]});
         let plan = allocate_value(&doc, false).unwrap();
-        assert!(plan.failures.iter().any(|f| f.rule == "pack-mechanic" && f.warn));
+        assert!(
+            plan.failures
+                .iter()
+                .any(|f| f.rule == "pack-mechanic" && f.warn)
+        );
         assert_eq!(render(&plan, false).0, 0);
         let mut both = doc.clone();
         both["packs"][0]["picks"] = json!(["A", "B"]);

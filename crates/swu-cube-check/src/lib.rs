@@ -647,7 +647,7 @@ fn cube_mechanic_findings(packs: &[Pack]) -> Vec<Failure> {
                     "pack '{}' spends {} and makes none; {covered} of {others} other packs produce it ({}%)",
                     p.name,
                     m.name,
-                    if others == 0 { 0 } else { covered * 100 / others }
+                    (covered * 100).checked_div(others).unwrap_or(0)
                 ),
             ));
         }

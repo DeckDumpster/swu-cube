@@ -224,7 +224,10 @@ mod tests {
             }
         }
         // `picks` is a plan-pack field the skill documents; the plan schema describes it.
-        assert!(skill.contains("`picks: [card ids]`"), "SKILL.md omits the picks field");
+        assert!(
+            skill.contains("`picks: [card ids]`"),
+            "SKILL.md omits the picks field"
+        );
         assert!(
             schema["properties"]["plan"]["description"]
                 .as_str()

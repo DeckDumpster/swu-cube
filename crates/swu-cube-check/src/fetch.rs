@@ -302,7 +302,9 @@ mod tests {
         }
         fn lookup(&self, q: &str) -> Result<Vec<Value>, String> {
             assert!(q.contains("id:SOR-14"), "{q}");
-            Ok(vec![json!({"id": "SOR-14", "name": "Sabine Wren", "type": "Leader"})])
+            Ok(vec![
+                json!({"id": "SOR-14", "name": "Sabine Wren", "type": "Leader"}),
+            ])
         }
     }
 

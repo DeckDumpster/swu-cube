@@ -177,9 +177,10 @@ impl Card {
                 .as_u64()
                 .and_then(|o| u32::try_from(o).ok()),
             rules_text: game["rules_text"].as_str().unwrap_or("").to_string(),
-            mechanics: game.get("mechanics").filter(|m| m.is_object()).map(|m| {
-                (strings(&m["consumes"]), strings(&m["produces"]))
-            }),
+            mechanics: game
+                .get("mechanics")
+                .filter(|m| m.is_object())
+                .map(|m| (strings(&m["consumes"]), strings(&m["produces"]))),
             traits: strings(&game["traits"]),
         }
     }
@@ -381,8 +382,7 @@ pub fn check_pack(pack: &Pack) -> Vec<Failure> {
                 .filter_map(|l| pack.cards.get(&l.card_id))
                 .any(|c| {
                     c.kind != "Base"
-                        && (c.traits.contains("Force")
-                            || c.touches(&MECHANICS[0], false))
+                        && (c.traits.contains("Force") || c.touches(&MECHANICS[0], false))
                 });
             if !force_reason {
                 out.push(fail(
@@ -757,9 +757,9 @@ pub fn render(result: Result<Vec<Failure>, String>) -> (i32, String) {
         Ok(failures) if failures.is_empty() => (0, "ok".into()),
         Ok(failures) => {
             let hard = failures.iter().any(|f| !f.warn);
-            let lines = failures.iter().map(|f| {
-                format!("{} {f}", if f.warn { "WARN" } else { "FAIL" })
-            });
+            let lines = failures
+                .iter()
+                .map(|f| format!("{} {f}", if f.warn { "WARN" } else { "FAIL" }));
             let text: Vec<String> = if hard {
                 lines.collect()
             } else {
@@ -1107,7 +1107,10 @@ mod tests {
             "prefer a leader with no Force cost",
             "draw cards, never its bases",
         ] {
-            assert!(para.contains(needle), "Force leaders paragraph omits `{needle}`");
+            assert!(
+                para.contains(needle),
+                "Force leaders paragraph omits `{needle}`"
+            );
         }
     }
 
@@ -1118,8 +1121,14 @@ mod tests {
             .lines()
             .find(|l| l.starts_with("The archetypes and the leader guidance are advice"))
             .expect("SKILL.md lacks the archetype advice line");
-        assert!(line.contains("Grand Inquisitor"), "archetype guidance omits the parasitic example");
-        assert!(line.contains("Force leaders"), "archetype guidance does not point at the Force leaders rule");
+        assert!(
+            line.contains("Grand Inquisitor"),
+            "archetype guidance omits the parasitic example"
+        );
+        assert!(
+            line.contains("Force leaders"),
+            "archetype guidance does not point at the Force leaders rule"
+        );
     }
 
     #[test]
@@ -1728,7 +1737,9 @@ mod tests {
 
     fn force_leader(p: &mut Value) {
         edit(p, "L1", |c| {
-            c["game"]["rules_text"] = json!("Action [Exhaust, use the Force]: Draw a card.\nEpic Action: Deploy.\nDeployed:\nOn Attack: Draw.")
+            c["game"]["rules_text"] = json!(
+                "Action [Exhaust, use the Force]: Draw a card.\nEpic Action: Deploy.\nDeployed:\nOn Attack: Draw."
+            )
         });
     }
 
@@ -1740,8 +1751,14 @@ mod tests {
             c["game"]["rules_text"] = json!("Action [use the Force]: Heal 2.")
         });
         let f = check_pack_value(&p).unwrap();
-        assert!(f.iter().any(|f| f.rule == "leader-mechanic" && !f.warn), "{f:?}");
-        assert!(f.iter().any(|f| f.rule == "pack-mechanic" && f.warn), "{f:?}");
+        assert!(
+            f.iter().any(|f| f.rule == "leader-mechanic" && !f.warn),
+            "{f:?}"
+        );
+        assert!(
+            f.iter().any(|f| f.rule == "pack-mechanic" && f.warn),
+            "{f:?}"
+        );
         let (code, text) = render(Ok(f));
         assert_eq!(code, 1);
         assert!(text.contains("FAIL leader-mechanic") && text.contains("WARN pack-mechanic"));
@@ -1792,7 +1809,8 @@ mod tests {
         let f = check_cube_value(&Value::Array(c)).unwrap();
         assert!(f.iter().all(|f| f.rule != "cube-mechanic"));
         assert!(
-            f.iter().any(|f| f.rule == "mechanic-report" && f.message.contains("1 of 19")),
+            f.iter()
+                .any(|f| f.rule == "mechanic-report" && f.message.contains("1 of 19")),
             "{f:?}"
         );
     }
@@ -1802,10 +1820,14 @@ mod tests {
         let mut p = pack(1, "Heroism", "Command");
         force_leader(&mut p);
         edit(&mut p, "B30-1", |c| {
-            c["game"]["rules_text"] = json!("When a friendly Force unit attacks: The Force is with you.")
+            c["game"]["rules_text"] =
+                json!("When a friendly Force unit attacks: The Force is with you.")
         });
         let f = check_pack_value(&p).unwrap();
-        assert!(f.iter().any(|f| f.rule == "leader-mechanic" && !f.warn), "{f:?}");
+        assert!(
+            f.iter().any(|f| f.rule == "leader-mechanic" && !f.warn),
+            "{f:?}"
+        );
     }
 
     #[test]

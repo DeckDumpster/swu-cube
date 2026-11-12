@@ -77,19 +77,75 @@ fn warn(rule: &'static str, message: impl Into<String>) -> Failure {
 }
 
 /// A mechanic some cards consume and others produce, found by rules-text patterns (lowercase
-/// substrings). A card's `game.mechanics` (`{"consumes": [...], "produces": [...]}`, mechanic
-/// names), when the catalog carries it, takes the place of the patterns for that card.
+/// substrings). A card that only works while the mechanic is present ("While the Force is with
+/// you") depends on a producer as a consumer does, so `requires` counts as consuming; its text
+/// contains the produce pattern, so a `requires` match is never a producer. A card's
+/// `game.mechanics`, when the catalog carries it, takes the place of the patterns for that card.
 struct Mechanic {
     name: &'static str,
     consumes: &'static [&'static str],
-    produces: &'static [&'static str],
+    requires: &'static [&'static str],
+    produces: &'static str,
 }
 
 const MECHANICS: [Mechanic; 1] = [Mechanic {
     name: "force",
     consumes: &["use the force"],
-    produces: &["the force is with you"],
+    requires: &["while the force is with you", "if the force is with you"],
+    produces: "the force is with you",
 }];
+
+/// One entry of a card's `game.mechanics`: the catalog's `[{name, role, side?, optional}]`, or the
+/// older `{"consumes": [...], "produces": [...]}` (which has no side).
+#[derive(Debug, Clone)]
+struct Use {
+    name: String,
+    /// `produces`, or `consumes`/`requires` (both depend on a producer).
+    produces: bool,
+    /// `front` or `deployed` on a leader; `None` when the catalog does not say.
+    side: Option<String>,
+}
+
+fn uses(mechanics: &Value) -> Option<Vec<Use>> {
+    let named = |names: &Value, produces: bool| -> Vec<Use> {
+        names
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|n| n.as_str())
+            .map(|n| Use {
+                name: n.to_string(),
+                produces,
+                side: None,
+            })
+            .collect()
+    };
+    match mechanics {
+        Value::Array(entries) => Some(
+            entries
+                .iter()
+                .filter_map(|e| {
+                    let produces = match e["role"].as_str()? {
+                        "produces" => true,
+                        "consumes" | "requires" => false,
+                        _ => return None,
+                    };
+                    Some(Use {
+                        name: e["name"].as_str()?.to_string(),
+                        produces,
+                        side: e["side"].as_str().map(String::from),
+                    })
+                })
+                .collect(),
+        ),
+        Value::Object(_) => {
+            let mut out = named(&mechanics["consumes"], false);
+            out.extend(named(&mechanics["produces"], true));
+            Some(out)
+        }
+        _ => None,
+    }
+}
 
 /// The part of a leader's rules text its undeployed side prints: before `Deployed:`, without the
 /// epic action that deploys it.
@@ -119,21 +175,25 @@ struct Card {
     /// The card object's `owned_count`, when the file carries one.
     owned: Option<u32>,
     rules_text: String,
-    /// `game.mechanics`, when the catalog carries it: (consumed, produced) mechanic names.
-    mechanics: Option<(BTreeSet<String>, BTreeSet<String>)>,
+    /// `game.mechanics`, when the catalog carries it.
+    mechanics: Option<Vec<Use>>,
     /// `game.traits`, when the catalog carries it.
     traits: BTreeSet<String>,
 }
 
 impl Card {
-    /// Whether the card consumes (`produce` false) or produces mechanic `m`. A leader is read on
-    /// its undeployed side only; a base's consumption is not counted.
+    /// Whether the card consumes or requires (`produce` false), or produces, mechanic `m`. A
+    /// leader is read on its undeployed side only; a base's consumption is not counted.
     fn touches(&self, m: &Mechanic, produce: bool) -> bool {
-        if let Some((consumes, produces)) = &self.mechanics {
-            return if produce { produces } else { consumes }.contains(m.name);
-        }
         if self.kind == "Base" && !produce {
             return false;
+        }
+        if let Some(uses) = &self.mechanics {
+            return uses.iter().any(|u| {
+                u.name == m.name
+                    && u.produces == produce
+                    && !(self.kind == "Leader" && u.side.as_deref() == Some("deployed"))
+            });
         }
         let text = if self.kind == "Leader" {
             front_side(&self.rules_text)
@@ -141,9 +201,16 @@ impl Card {
             self.rules_text.clone()
         }
         .to_lowercase();
-        if produce { m.produces } else { m.consumes }
+        let required = m
+            .requires
             .iter()
-            .any(|p| text.contains(p))
+            .map(|p| text.matches(p).count())
+            .sum::<usize>();
+        if produce {
+            text.matches(m.produces).count() > required
+        } else {
+            required > 0 || m.consumes.iter().any(|p| text.contains(p))
+        }
     }
 
     fn from_value(v: &Value) -> Card {
@@ -177,12 +244,15 @@ impl Card {
                 .as_u64()
                 .and_then(|o| u32::try_from(o).ok()),
             rules_text: game["rules_text"].as_str().unwrap_or("").to_string(),
-            mechanics: game
-                .get("mechanics")
-                .filter(|m| m.is_object())
-                .map(|m| (strings(&m["consumes"]), strings(&m["produces"]))),
+            mechanics: game.get("mechanics").and_then(uses),
             traits: strings(&game["traits"]),
         }
+    }
+
+    /// Whether this base's ability needs Force units or the Force: a Legends of the Force base
+    /// ("When a friendly Force unit attacks: The Force is with you.").
+    fn is_force_base(&self) -> bool {
+        self.touches(&MECHANICS[0], true) || self.rules_text.to_lowercase().contains("force unit")
     }
 
     /// Whether this base has an epic action: the catalog's `epic_action`, and nothing else.
@@ -375,26 +445,21 @@ pub fn check_pack(pack: &Pack) -> Vec<Failure> {
     let mut hps: Vec<i64> = bases.iter().filter_map(|b| b.hp).collect();
     hps.sort_unstable();
     if bases.len() == 2 && hps != [25, 30] {
-        if hps == [25, 28] {
-            let force_reason = pack
-                .lines
-                .iter()
-                .filter_map(|l| pack.cards.get(&l.card_id))
-                .any(|c| {
-                    c.kind != "Base"
-                        && (c.traits.contains("Force") || c.touches(&MECHANICS[0], false))
-                });
-            if !force_reason {
-                out.push(fail(
-                    "base-hp",
-                    "a 28-HP ability base stands in for the 30-HP base only when the pack has a Force unit or a Force consumer, and this pack has neither",
-                ));
+        let ability = bases
+            .iter()
+            .find(|b| b.hp != Some(25) && !b.is_epic() && !b.rules_text.trim().is_empty());
+        match ability {
+            Some(b) if hps.len() == 2 && hps.contains(&25) => {
+                if let Some(why) = ability_base_problem(b, pack) {
+                    out.push(fail("base-hp", why));
+                }
             }
-        } else {
-            out.push(fail(
+            _ => out.push(fail(
                 "base-hp",
-                format!("bases have HP {hps:?}, not one 25 and one 30 (or one 25 and one 28-HP Force base)"),
-            ));
+                format!(
+                    "bases have HP {hps:?}, not one 25 and one 30 (or one 25 and an ability base; a vanilla base below 30 HP is an Intro Battle base, off theme)"
+                ),
+            )),
         }
     }
 
@@ -544,33 +609,90 @@ pub fn check_pack(pack: &Pack) -> Vec<Failure> {
     out
 }
 
+/// Why an ability base (no epic action) may not stand in for the 30-HP base, if it may not. A
+/// base that changes the deck size is off theme for a fixed 30-card deck, and a Force base needs
+/// a Force unit, consumer or requirer among the pack's own cards. Any other ability works with
+/// every leader, so it passes: Pau City's +0/+1 to leader units, Droid Manufactory's droids,
+/// Colossus's 35 HP for one fewer starting card, Nabat Village's larger opening hand.
+fn ability_base_problem(b: &Card, pack: &Pack) -> Option<String> {
+    if b.rules_text.to_lowercase().contains("deck size") {
+        return Some(format!(
+            "'{}' changes the deck size, which is off theme for a fixed 30-card deck",
+            b.name
+        ));
+    }
+    if b.is_force_base() {
+        let force_reason = pack
+            .lines
+            .iter()
+            .filter_map(|l| pack.cards.get(&l.card_id))
+            .any(|c| {
+                c.kind != "Base" && (c.traits.contains("Force") || c.touches(&MECHANICS[0], false))
+            });
+        if !force_reason {
+            return Some(format!(
+                "Force base '{}' stands in for the 30-HP base only when the pack has a Force unit or a Force consumer, and this pack has neither",
+                b.name
+            ));
+        }
+    }
+    None
+}
+
 /// A consumer with nothing in its own pack to produce what it spends. A match is two random packs,
-/// so only this pack's own cards (and the leader's front side) are dependable producers. The
-/// leader's undeployed side is a failure; a draw card is a warning.
+/// so only this pack's own cards (and the leader's front side) are dependable producers. A leader
+/// that spends on its undeployed side fails with no producing draw card and is warned with one
+/// (each gives about one use a game); one that produces for itself is self-sufficient. A draw
+/// card is a warning.
 fn mechanic_failures(pack: &Pack) -> Vec<Failure> {
     let mut out = Vec::new();
-    let cards: Vec<&Card> = pack
+    let cards: Vec<(&Card, u32)> = pack
         .lines
         .iter()
-        .filter_map(|l| pack.cards.get(&l.card_id))
+        .filter_map(|l| pack.cards.get(&l.card_id).map(|c| (c, l.qty)))
         .collect();
     for m in &MECHANICS {
         // A leader never plays with its own pack's bases (the base comes from the partner pack),
         // and a draw card has its own base only when this pack supplies it.
-        let dependable = cards.iter().any(|c| c.kind != "Base" && c.touches(m, true));
-        let base_only = !dependable && cards.iter().any(|c| c.touches(m, true));
-        for c in &cards {
-            if dependable || !c.touches(m, false) {
+        let dependable = cards
+            .iter()
+            .any(|(c, _)| c.kind != "Base" && c.touches(m, true));
+        let base_only = !dependable && cards.iter().any(|(c, _)| c.touches(m, true));
+        let draw_producers: u32 = cards
+            .iter()
+            .filter(|(c, _)| c.kind != "Base" && c.kind != "Leader" && c.touches(m, true))
+            .map(|(_, q)| q)
+            .sum();
+        for (c, _) in &cards {
+            if !c.touches(m, false) {
                 continue;
             }
             if c.kind == "Leader" {
-                out.push(fail(
-                    "leader-mechanic",
-                    format!(
-                        "leader '{}' spends {} on its undeployed side, and nothing in the pack produces it",
-                        c.name, m.name
-                    ),
-                ));
+                if c.touches(m, true) || draw_producers >= 2 {
+                    continue;
+                }
+                let message = format!(
+                    "leader '{}' spends {} on its undeployed side, and {} draw card{} in the pack produce{} it",
+                    c.name,
+                    m.name,
+                    if draw_producers == 0 {
+                        "no".to_string()
+                    } else {
+                        draw_producers.to_string()
+                    },
+                    if draw_producers == 1 { "" } else { "s" },
+                    if draw_producers == 1 { "s" } else { "" },
+                );
+                out.push(if draw_producers == 0 {
+                    fail("leader-mechanic", message)
+                } else {
+                    warn(
+                        "leader-mechanic",
+                        format!("{message}; it needs at least two"),
+                    )
+                });
+            } else if dependable {
+                continue;
             } else if c.kind != "Base" {
                 let why = if base_only {
                     "only the pack's base produces it, and that base is in play in about half of pairings"
@@ -1332,6 +1454,66 @@ mod tests {
     }
 
     #[test]
+    fn a_universal_ability_base_stands_in_for_the_30_hp_base() {
+        for (hp, text) in [
+            (26, "Each leader unit you control gets +0/+1."),
+            (
+                24,
+                "When you deploy a leader: Create 2 Battle Droid tokens.",
+            ),
+        ] {
+            let mut p = pack(1, "Heroism", "Command");
+            edit(&mut p, "B30", |c| {
+                c["game"]["hp"] = json!(hp);
+                c["game"]["rules_text"] = json!(text);
+            });
+            assert!(!rules(&p).contains(&"base-hp"), "{hp}: {:?}", rules(&p));
+        }
+    }
+
+    #[test]
+    fn an_ability_base_that_changes_the_starting_hand_passes() {
+        for (hp, text) in [
+            (35, "Draw 1 less card in your starting hand."),
+            (
+                27,
+                "Draw 3 more cards in your starting hand. You can't take a mulligan.",
+            ),
+        ] {
+            let mut p = pack(1, "Heroism", "Command");
+            edit(&mut p, "B30", |c| {
+                c["game"]["hp"] = json!(hp);
+                c["game"]["rules_text"] = json!(text);
+            });
+            assert!(!rules(&p).contains(&"base-hp"), "{hp}: {:?}", rules(&p));
+        }
+    }
+
+    #[test]
+    fn an_ability_base_that_changes_the_deck_size_fails() {
+        for (hp, text) in [
+            (27, "Your minimum deck size is decreased by 5 cards."),
+            (33, "Your minimum deck size is increased by 10 cards."),
+        ] {
+            let mut p = pack(1, "Heroism", "Command");
+            edit(&mut p, "B30", |c| {
+                c["game"]["hp"] = json!(hp);
+                c["game"]["rules_text"] = json!(text);
+            });
+            let f = check_pack_value(&p).unwrap();
+            let m = f.iter().find(|f| f.rule == "base-hp").expect("base-hp");
+            assert!(m.message.contains("deck size"), "{}", m.message);
+        }
+    }
+
+    #[test]
+    fn a_vanilla_base_below_30_hp_fails() {
+        let mut p = pack(1, "Heroism", "Command");
+        edit(&mut p, "B30", |c| c["game"]["hp"] = json!(20));
+        assert!(rules(&p).contains(&"base-hp"));
+    }
+
+    #[test]
     fn a_base_must_match_the_leaders_color() {
         let mut p = pack(1, "Heroism", "Command");
         edit(&mut p, "B30", |c| c["game"]["aspects"] = json!(["Cunning"]));
@@ -1768,9 +1950,11 @@ mod tests {
     fn a_producer_in_the_pack_covers_the_consumer_and_the_deployed_side_is_ignored() {
         let mut p = pack(1, "Heroism", "Command");
         force_leader(&mut p);
-        edit(&mut p, "C1-0", |c| {
-            c["game"]["rules_text"] = json!("The Force is with you.")
-        });
+        for id in ["C1-0", "C1-1"] {
+            edit(&mut p, id, |c| {
+                c["game"]["rules_text"] = json!("The Force is with you.")
+            });
+        }
         assert_eq!(check_pack_value(&p).unwrap(), vec![]);
         let mut q = pack(1, "Heroism", "Command");
         edit(&mut q, "L1", |c| {
@@ -1828,6 +2012,100 @@ mod tests {
             f.iter().any(|f| f.rule == "leader-mechanic" && !f.warn),
             "{f:?}"
         );
+    }
+
+    #[test]
+    fn a_leader_with_one_producing_draw_card_is_warned() {
+        let mut p = pack(1, "Heroism", "Command");
+        force_leader(&mut p);
+        edit(&mut p, "C1-0", |c| {
+            c["game"]["rules_text"] = json!("The Force is with you.")
+        });
+        let f = check_pack_value(&p).unwrap();
+        assert_eq!(f.len(), 1, "{f:?}");
+        assert!(f[0].warn && f[0].rule == "leader-mechanic");
+        assert!(f[0].message.contains("at least two"), "{}", f[0].message);
+    }
+
+    #[test]
+    fn a_leader_that_produces_for_itself_is_self_sufficient() {
+        let mut p = pack(1, "Heroism", "Command");
+        edit(&mut p, "L1", |c| {
+            c["game"]["rules_text"] = json!(
+                "Action [Exhaust]: The Force is with you.\nAction [use the Force]: Draw.\nDeployed:\nWhile the Force is with you, this unit gets +4/+0."
+            )
+        });
+        assert_eq!(check_pack_value(&p).unwrap(), vec![]);
+    }
+
+    #[test]
+    fn while_the_force_is_with_you_requires_it_and_does_not_produce_it() {
+        let mut p = pack(1, "Heroism", "Command");
+        edit(&mut p, "C1-0", |c| {
+            c["game"]["rules_text"] = json!("While the Force is with you, this unit gains Grit.")
+        });
+        edit(&mut p, "C1-1", |c| {
+            c["game"]["rules_text"] = json!("use the Force: heal")
+        });
+        let f = check_pack_value(&p).unwrap();
+        assert_eq!(
+            f.iter().filter(|f| f.rule == "pack-mechanic").count(),
+            2,
+            "{f:?}"
+        );
+        // A card that requires the Force is a reason for a Force base.
+        let mut q = pack(1, "Heroism", "Command");
+        force_base(&mut q);
+        edit(&mut q, "C1-0", |c| {
+            c["game"]["rules_text"] = json!("While the Force is with you, this unit gains Grit.")
+        });
+        assert!(!rules(&q).contains(&"base-hp"), "{:?}", rules(&q));
+    }
+
+    /// `game.mechanics` as the catalog returns it (2026-11-11): a list of roles with sides.
+    #[test]
+    fn catalog_mechanic_lists_are_read_by_role_and_side() {
+        // Mother Talzin, LOF-2: her front side consumes.
+        let mut p = pack(1, "Heroism", "Command");
+        edit(
+            &mut p,
+            "L1",
+            |c| {
+                c["game"]["mechanics"] = json!([{"name": "force", "optional": false, "role": "consumes", "side": "front"}])
+            },
+        );
+        assert!(rules(&p).contains(&"leader-mechanic"));
+        // Avar Kriss, LOF-7: produces on the front, requires only when deployed.
+        let mut p = pack(1, "Heroism", "Command");
+        edit(&mut p, "L1", |c| {
+            c["game"]["mechanics"] = json!([
+                {"name": "force", "optional": false, "role": "produces", "side": "front"},
+                {"name": "force", "optional": false, "role": "requires", "side": "deployed"}
+            ])
+        });
+        assert_eq!(check_pack_value(&p).unwrap(), vec![]);
+        // Plo Koon, LOF-50: requires, and nothing produces.
+        let mut p = pack(1, "Heroism", "Command");
+        edit(
+            &mut p,
+            "C1-0",
+            |c| {
+                c["game"]["mechanics"] =
+                    json!([{"name": "force", "optional": false, "role": "requires"}])
+            },
+        );
+        assert!(rules(&p).contains(&"pack-mechanic"));
+        // Experience is not a mechanic the checker tracks.
+        let mut p = pack(1, "Heroism", "Command");
+        edit(
+            &mut p,
+            "C1-0",
+            |c| {
+                c["game"]["mechanics"] =
+                    json!([{"name": "experience", "optional": false, "role": "consumes"}])
+            },
+        );
+        assert_eq!(check_pack_value(&p).unwrap(), vec![]);
     }
 
     #[test]

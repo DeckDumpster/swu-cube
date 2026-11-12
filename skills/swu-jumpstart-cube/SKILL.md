@@ -30,22 +30,23 @@ copies and that no copy is in two decks. The `check_cube` tool (below) is what t
 1. **1 Leader.** It must be Heroism or Villainy: a **Neutral** leader (the data says `"alignment": "Neutral"`, such as
    Fennec Shand) does not lead a pack, and `check_cube` rejects one. A leader with an alignment but **no color aspect** (Anakin Skywalker, Tempted by the Dark Side, LOF-18: the official record lists Heroism only) cannot lead a pack either, since a pack is defined by its leader's color; the checker rejects it with that message, so pick another leader. It sets the alignment (Heroism/Villainy, the aspect names; `game.alignment` and the summary use them too) and the color aspect.
 Bases come in three kinds in the data: 25-HP with an epic action, ability bases with no epic action
-(`collection_summary` calls these `ability`), and 30-HP vanilla. An ability base below 30 HP may
+(`collection_summary` calls these `ability`), and 30-HP vanilla. An ability base of any HP may
 stand in for the 30-HP base (still the Leader's color) when its ability works in this format, and
 `base-hp` rejects it, naming why, when it does not:
 
 - **Universal abilities pass:** Pau City and Petranaki Arena (26 HP, +0/+1 or +1/+0 to your leader
-  units), Droid Manufactory (24 HP, two Battle Droids when you deploy a leader). They work with any
-  leader the base meets, which is what a jumpstart base needs.
+  units), Droid Manufactory (24 HP, two Battle Droids when you deploy a leader), Colossus (35 HP,
+  one fewer card in your starting hand), Nabat Village (27 HP, three more starting cards and three
+  put back, no mulligan). They work with any leader the base meets, which is what a jumpstart base
+  needs.
 - **Force bases need a reason in the pack.** Every 28-HP base in the catalog is a Legends of the
   Force base ("When a friendly Force unit attacks: The Force is with you."), the main Force source
   in a collection with LOF. It passes only when the pack holds a Force unit (trait Force), a Force
   consumer, or a card that requires the Force ("While the Force is with you"). Without one, a Force
   consumer may have no producer anywhere in the cube.
-- **Deck and opening-hand rules fail:** a base that changes the minimum deck size or the starting
-  hand (Thermal Oscillator, Nabat Village) cannot be honoured by two random packs, and a base of 30
-  HP or more is never the ability base (Data Vault, Colossus). A vanilla base below 30 HP (the 20-HP
-  Intro Battle bases) fails too.
+- **Off-theme bases fail:** a base that changes the minimum deck size (Thermal Oscillator, Data
+  Vault) means nothing in a fixed 30-card deck, and a vanilla base below 30 HP is an Intro Battle
+  base (Echo Caverns, Forward Command Post, 20 HP). Both are off theme for the cube.
 
 2. **1 Epic Action Base (25 HP)**, strictly the Leader's color aspect: any 25-HP base of that aspect with an epic action.
 3. **1 Vanilla Base (30 HP)**, strictly the Leader's color aspect: any 30-HP base of that aspect without an epic action, or an ability base that passes the rule above.

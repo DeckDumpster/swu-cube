@@ -457,7 +457,7 @@ pub fn check_pack(pack: &Pack) -> Vec<Failure> {
             _ => out.push(fail(
                 "base-hp",
                 format!(
-                    "bases have HP {hps:?}, not one 25 and one 30 (or one 25 and an ability base below 30 HP)"
+                    "bases have HP {hps:?}, not one 25 and one 30 (or one 25 and an ability base; a vanilla base below 30 HP is an Intro Battle base, off theme)"
                 ),
             )),
         }
@@ -609,28 +609,15 @@ pub fn check_pack(pack: &Pack) -> Vec<Failure> {
     out
 }
 
-/// A consumer with nothing in its own pack to produce what it spends. A match is two random packs,
-/// so only this pack's own cards (and the leader's front side) are dependable producers. A leader
-/// that spends on its undeployed side fails with no producing draw card and is warned with one
-/// (each gives about one use a game); one that produces for itself is self-sufficient. A draw
-/// card is a warning.
-/// Why an ability base (no epic action, below 30 HP) may not stand in for the 30-HP base, if it
-/// may not. A base that changes the deck or the opening hand breaks the format, and a Force base
-/// needs a Force unit, consumer or requirer among the pack's own cards. Any other ability (Pau
-/// City's +0/+1 to leader units, Droid Manufactory's droids on deploying a leader) works with
-/// every leader, so it passes.
+/// Why an ability base (no epic action) may not stand in for the 30-HP base, if it may not. A
+/// base that changes the deck size is off theme for a fixed 30-card deck, and a Force base needs
+/// a Force unit, consumer or requirer among the pack's own cards. Any other ability works with
+/// every leader, so it passes: Pau City's +0/+1 to leader units, Droid Manufactory's droids,
+/// Colossus's 35 HP for one fewer starting card, Nabat Village's larger opening hand.
 fn ability_base_problem(b: &Card, pack: &Pack) -> Option<String> {
-    let text = b.rules_text.to_lowercase();
-    if b.hp.is_some_and(|hp| hp >= 30) {
+    if b.rules_text.to_lowercase().contains("deck size") {
         return Some(format!(
-            "'{}' is a {}-HP ability base; only one below 30 HP stands in for the 30-HP base",
-            b.name,
-            b.hp.unwrap_or(0)
-        ));
-    }
-    if text.contains("deck size") || text.contains("starting hand") {
-        return Some(format!(
-            "'{}' changes the deck or the opening hand, which two random packs cannot honour",
+            "'{}' changes the deck size, which is off theme for a fixed 30-card deck",
             b.name
         ));
     }
@@ -652,6 +639,11 @@ fn ability_base_problem(b: &Card, pack: &Pack) -> Option<String> {
     None
 }
 
+/// A consumer with nothing in its own pack to produce what it spends. A match is two random packs,
+/// so only this pack's own cards (and the leader's front side) are dependable producers. A leader
+/// that spends on its undeployed side fails with no producing draw card and is warned with one
+/// (each gives about one use a game); one that produces for itself is self-sufficient. A draw
+/// card is a warning.
 fn mechanic_failures(pack: &Pack) -> Vec<Failure> {
     let mut out = Vec::new();
     let cards: Vec<(&Card, u32)> = pack
@@ -1480,23 +1472,28 @@ mod tests {
     }
 
     #[test]
-    fn an_ability_base_that_changes_the_deck_or_hand_fails() {
-        for (hp, text, why) in [
+    fn an_ability_base_that_changes_the_starting_hand_passes() {
+        for (hp, text) in [
+            (35, "Draw 1 less card in your starting hand."),
             (
                 27,
-                "Your minimum deck size is decreased by 5 cards.",
-                "opening hand",
+                "Draw 3 more cards in your starting hand. You can't take a mulligan.",
             ),
-            (
-                27,
-                "Draw 3 more cards in your starting hand.",
-                "opening hand",
-            ),
-            (
-                33,
-                "Your minimum deck size is increased by 10 cards.",
-                "below 30",
-            ),
+        ] {
+            let mut p = pack(1, "Heroism", "Command");
+            edit(&mut p, "B30", |c| {
+                c["game"]["hp"] = json!(hp);
+                c["game"]["rules_text"] = json!(text);
+            });
+            assert!(!rules(&p).contains(&"base-hp"), "{hp}: {:?}", rules(&p));
+        }
+    }
+
+    #[test]
+    fn an_ability_base_that_changes_the_deck_size_fails() {
+        for (hp, text) in [
+            (27, "Your minimum deck size is decreased by 5 cards."),
+            (33, "Your minimum deck size is increased by 10 cards."),
         ] {
             let mut p = pack(1, "Heroism", "Command");
             edit(&mut p, "B30", |c| {
@@ -1505,7 +1502,7 @@ mod tests {
             });
             let f = check_pack_value(&p).unwrap();
             let m = f.iter().find(|f| f.rule == "base-hp").expect("base-hp");
-            assert!(m.message.contains(why), "{}", m.message);
+            assert!(m.message.contains("deck size"), "{}", m.message);
         }
     }
 

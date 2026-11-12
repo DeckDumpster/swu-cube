@@ -99,9 +99,11 @@ rejected as the epic base. A collection may not own enough epic bases for 5 per
 color (read the owned epic-base counts from `collection_summary` at run time): report the shortfall to the user and build the packs
 that are possible; never fail silently.
 
-**Leaders: the universality rule.** Prefer Common Leaders with universal, unconditional abilities
-(damage, shielding, resource readying). Avoid Rare, parasitic Leaders whose abilities need
-specific traits (Hera Syndulla, Grand Inquisitor) unless the other half-deck will support them.
+**Leaders: the universality rule.** Prefer leaders whose abilities work in any pack: universal,
+unconditional effects (damage, shielding, resource readying). Avoid parasitic leaders whose
+abilities need specific traits (Hera Syndulla, Grand Inquisitor) unless the other half-deck will
+support them. Rarity is not the test: a rare leader that works in any pack is as good a pick as a
+common one.
 A leader whose undeployed (front) side spends a resource nothing in its pack produces, such as an
 Action costing "use the Force" in a pack with no "The Force is with you" card, is automatically
 disqualifying: `check_cube` fails it `leader-mechanic`, and warns it with only one producing draw card in the pack. A match pairs two random packs, so only the

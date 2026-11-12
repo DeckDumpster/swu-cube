@@ -29,15 +29,26 @@ copies and that no copy is in two decks. The `check_cube` tool (below) is what t
 
 1. **1 Leader.** It must be Heroism or Villainy: a **Neutral** leader (the data says `"alignment": "Neutral"`, such as
    Fennec Shand) does not lead a pack, and `check_cube` rejects one. A leader with an alignment but **no color aspect** (Anakin Skywalker, Tempted by the Dark Side, LOF-18: the official record lists Heroism only) cannot lead a pack either, since a pack is defined by its leader's color; the checker rejects it with that message, so pick another leader. It sets the alignment (Heroism/Villainy, the aspect names; `game.alignment` and the summary use them too) and the color aspect.
-Bases come in three kinds in the data: 25-HP with an epic action, 28-HP with an ability but
-no epic action (`collection_summary` calls these `ability`), and 30-HP vanilla. Every 28-HP base in the
-catalog is a Legends of the Force base ("When a friendly Force unit attacks: The Force is with you."),
-the main Force source in a collection with LOF. It may stand in for the 30-HP base (still the Leader's color)
-only when the pack holds a Force unit (trait Force), a Force consumer, or a card that requires the Force ("While the Force is with you"); otherwise `base-hp` rejects it,
-naming why. Without one, a Force consumer may have no producer anywhere in the cube.
+Bases come in three kinds in the data: 25-HP with an epic action, ability bases with no epic action
+(`collection_summary` calls these `ability`), and 30-HP vanilla. An ability base below 30 HP may
+stand in for the 30-HP base (still the Leader's color) when its ability works in this format, and
+`base-hp` rejects it, naming why, when it does not:
+
+- **Universal abilities pass:** Pau City and Petranaki Arena (26 HP, +0/+1 or +1/+0 to your leader
+  units), Droid Manufactory (24 HP, two Battle Droids when you deploy a leader). They work with any
+  leader the base meets, which is what a jumpstart base needs.
+- **Force bases need a reason in the pack.** Every 28-HP base in the catalog is a Legends of the
+  Force base ("When a friendly Force unit attacks: The Force is with you."), the main Force source
+  in a collection with LOF. It passes only when the pack holds a Force unit (trait Force), a Force
+  consumer, or a card that requires the Force ("While the Force is with you"). Without one, a Force
+  consumer may have no producer anywhere in the cube.
+- **Deck and opening-hand rules fail:** a base that changes the minimum deck size or the starting
+  hand (Thermal Oscillator, Nabat Village) cannot be honoured by two random packs, and a base of 30
+  HP or more is never the ability base (Data Vault, Colossus). A vanilla base below 30 HP (the 20-HP
+  Intro Battle bases) fails too.
 
 2. **1 Epic Action Base (25 HP)**, strictly the Leader's color aspect: any 25-HP base of that aspect with an epic action.
-3. **1 Vanilla Base (30 HP)**, strictly the Leader's color aspect: any 30-HP base of that aspect without an epic action.
+3. **1 Vanilla Base (30 HP)**, strictly the Leader's color aspect: any 30-HP base of that aspect without an epic action, or an ability base that passes the rule above.
 4. **15 draw cards**, none off the Leader's alignment or color aspect (no off-aspect penalties).
    A card of the Leader's color with `"alignment": "Neutral"` (no Heroism/Villainy aspect: Make an
    Opening, Vanquish) carries no aspect penalty and is legal in that leader's pack; so is a card with
@@ -102,7 +113,7 @@ spends an unproduced resource is a `pack-mechanic` warning, and `cube` mode fail
 that produce it. The same holds for any resource the cube cannot produce: a leader or card spending it is the most
 parasitic pick there is, so check that the cube owns a producer (a Force base counts) before choosing the consumer. `allocate` warns the same for picks (give the pack's `leader` row for its front side).
 
-**Force leaders.** A leader whose undeployed side spends the Force is the last choice in this format, and usually unplayable. Its own pack's bases never play with it (§3: the Leader comes from pack A, the Base from pack B), and a partner's base is random: a Force base reaches the leader only if the random partner pack carries one, which holds for every pack only if every pack has one, and a collection cannot support that (one 2026-10-23 collection had 6 Force bases for a 20-pack cube, none of them Vigilance). Only the leader's own draw cards are dependable, since all 15 are always in the combined 30-card deck. Choose such a leader only when its own pack carries at least two non-base Force producers (Directed by the Force, Youngling Padawan, Acolyte of the Beyond), and prefer a leader with no Force cost: each producer gives one use, so even with 2-3 of them a front-side "Exhaust, use the Force" Action fires perhaps twice a game. The same reasoning applies to any resource a leader spends: count producers among the leader's own draw cards, never its bases. The exception is a leader whose own undeployed side produces what it spends (Avar Kriss, Marshal of Starlight: "Exhaust: The Force is with you"): it is self-sufficient, `leader-mechanic` passes it, and it is the one Force leader that plays well here. The 28-HP base allowance helps draw cards and partners, never the pack's own leader.
+**Force leaders.** A leader whose undeployed side spends the Force is the last choice in this format, and usually unplayable. Its own pack's bases never play with it (§3: the Leader comes from pack A, the Base from pack B), and a partner's base is random: a Force base reaches the leader only if the random partner pack carries one, which holds for every pack only if every pack has one, and a collection cannot support that (one 2026-10-23 collection had 6 Force bases for a 20-pack cube, none of them Vigilance). Only the leader's own draw cards are dependable, since all 15 are always in the combined 30-card deck. Choose such a leader only when its own pack carries at least two non-base Force producers (Directed by the Force, Youngling Padawan, Acolyte of the Beyond), and prefer a leader with no Force cost: each producer gives one use, so even with 2-3 of them a front-side "Exhaust, use the Force" Action fires perhaps twice a game. The same reasoning applies to any resource a leader spends: count producers among the leader's own draw cards, never its bases. The exception is a leader whose own undeployed side produces what it spends (Avar Kriss, Marshal of Starlight: "Exhaust: The Force is with you"): it is self-sufficient, `leader-mechanic` passes it, and it is the one Force leader that plays well here. The Force-base allowance helps draw cards and partners, never the pack's own leader.
 
 Top-tier universal examples: Sabine Wren (SOR-14), Boba Fett (SOR-15), Darth Vader, Dark Lord of the Sith (SOR-10). Leia Organa, Alliance General (SOR-9) is not one: her ability needs Rebel units.
 

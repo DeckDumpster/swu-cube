@@ -13,13 +13,16 @@ copies and that no copy is in two decks. The `check_cube` tool (below) is what t
 
 ### 1. Format
 
-- **Cube:** 20 half-decks, 10 Heroism and 10 Villainy.
-- **Pack:** 18 cards.
+- **Cube:** 20 half-decks by default, half Heroism and half Villainy. Ask the user for another
+  size when their storage sets one (a case may hold 18 deck boxes); any even size of at least 8
+  works, and `check_cube` takes it as `packs`.
+- **Pack:** 18 cards, and every draw card in it is different: a second copy spends a slot on
+  something the pack already has. `check_cube` fails `duplicate`.
 - **Singleton:** only Leaders, and non-base Rares and Legendaries, are singleton: each appears in
-  at most one of the 20 packs. A card is its title and subtitle, so different printings of the same
+  at most one pack in the cube. A card is its title and subtitle, so different printings of the same
   title and subtitle (set reprint, foil, Hyperspace or Showcase) are one card, and the same title
   with a different subtitle is a different card (a Leader and a unit often share a title).
-  Bases are always exempt. Commons, Uncommons and Specials may repeat; the collection's copies are
+  Bases are always exempt. Commons, Uncommons and Specials may repeat across packs; the collection's copies are
   the only limit, and the deck reservations already enforce that. `check_cube` in `cube` mode fails
   `cube-singleton`, naming the card as "Title — Subtitle" and its packs; `pack` mode does not. A
   card object with no rarity or no `subtitle` member makes `cube` refuse rather than guess.
@@ -81,8 +84,10 @@ epic action) or health (30 HP vanilla).
 
 ### 5. Command zone
 
-Exactly **5 packs per color** across the 20, each with an epic base and a vanilla base of that
-color. There are no cards named "Vanilla <color> Base": the vanilla base is any 30-HP base of the
+The packs split across the colors as evenly as the cube's size allows: **5 per color** at 20; at 18,
+two colors have 5 and two have 4. Each pack has an epic base and a vanilla base of its color. For
+an uneven split, take the cut from Heroism in one color and Villainy in another, so every
+color stays as balanced between the alignments as it can. There are no cards named "Vanilla <color> Base": the vanilla base is any 30-HP base of the
 Leader's aspect without an epic action, and the epic base is any 25-HP base of that aspect with one
 (`epic_action` on the card object). Ryan's preferred epic bases are the preference, not a requirement:
 
@@ -166,14 +171,14 @@ delete or call `set_deck_lines`. Check the new names are unique within the group
 Mind the rate limit: `/mcp` allows about 120 tool calls a minute per sign-in. Search once per
 distinct pool, not per pack (step 4), and choose from the results yourself; never search once per card.
 
-1. **`collection_summary`.** Learn what is owned and what is still available. A cube needs about
-   20 Leaders, 40 bases (5 epic and 5 vanilla per color) and 300 draw cards. Leaders and non-base Rares and Legendaries are singleton,
+1. **`collection_summary`.** Learn what is owned and what is still available. A 20-pack cube needs
+   20 Leaders, 40 bases (5 epic and 5 vanilla per color) and 300 draw cards; scale these to the cube's size. Leaders and non-base Rares and Legendaries are singleton,
    so count **distinct** ones (by title and subtitle); Commons, Uncommons and bases may repeat, so copies count for them.
    Size the Leaders from `leaders.by_aspect_alignment`, not `leaders.by_aspect`: `by_aspect` is a raw
    count of leaders having each aspect, so it counts a two-color leader under both colors and
    overstates how many can lead a pack of one color.
-2. **Allocate leaders and base pairs.** Pick 20 Leaders: 10 Heroism, 10 Villainy, 5 of each color
-   (for example Command 3+2, Vigilance 2+3, Aggression 3+2, Cunning 2+3). Apply the universality
+2. **Allocate leaders and base pairs.** Pick one Leader per pack: half Heroism, half Villainy, the colors as even as the size allows (at 20, 5 of each color,
+   for example Command 3+2, Vigilance 2+3, Aggression 3+2, Cunning 2+3). Apply the universality
    rule. Each pack takes an epic and a vanilla base of its Leader's color; if the collection lacks them, say so and build what is possible.
 3. **Plan copies across the whole cube.** Whenever two or more packs are planned together (a
    full cube or any multi-pack build), plan copies before saving any pack. Heroism-only, Villainy-only and no-aspect cards (Longbeam Cruiser) fit packs of any color, so an
@@ -237,7 +242,7 @@ distinct pool, not per pack (step 4), and choose from the results yourself; neve
 6. **Check the whole group.** Call `check_cube` with `mode: cube` and `group: <group>`: it lists the
    group's decks, fetches each, and checks them (no `get_deck` calls, no files). `cube` sums each card's `qty` over the packs and fails `cube-copies`, naming
    the card and the packs, when the sum exceeds the `owned_count` the site reports. `reserved` must equal `qty` on every line. The cube-level check applies to a
-   complete 20-pack cube only; a partial or test build checks each saved deck with
+   complete cube only (pass `packs` when it is not 20); a partial or test build checks each saved deck with
    `mode: pack` and `deck_ids` instead (`cube-size`, `cube-alignment` and `cube-bases` would fail),
    and checks copies across them with `mode: copies` and the group, which sums
    each card's `qty` against `owned_count` and prints only `cube-copies` failures (or `ok`).
@@ -249,8 +254,8 @@ distinct pool, not per pack (step 4), and choose from the results yourself; neve
 
 `check_cube` is a tool of this plugin's `swu-cube-check` MCP server. Its arguments: `mode`
 (`pack`, `cube`, `copies` or `allocate`), the decks as `deck_ids` (integers) or as a `group` name (check_cube takes either)
-(`allocate` takes `group` and/or `plan`, plus `verbose` and `fill`, never `deck_ids`), and
-optionally `site`. It prints `ok`, or one `FAIL <rule>: <what is wrong>` line per broken rule; an
+(`allocate` takes `group` and/or `plan`, plus `verbose` and `fill`, never `deck_ids`), `packs`
+(`cube` only: the cube's size, default 20), and optionally `site`. It prints `ok`, or one `FAIL <rule>: <what is wrong>` line per broken rule; an
 input it cannot fetch or read (no sign-in, an unknown deck, an empty group) comes back as a tool
 error, never as `ok`. With several `deck_ids` in `pack` mode each line is prefixed `deck <id>:`.
 
@@ -268,7 +273,7 @@ groups are invisible to it, so account for them with the `avail>=1` searches, wh
 what is left. `pack` mode takes every id in `deck_ids` in one call.
 
 The rules reported are: `shape`, `leader`, `base-hp`, `base-aspect`, `base-name`,
-`draw-aspect`, `arena`, `curve`, `reserved`, `unknown-card`, and for the cube `cube-size`,
+`draw-aspect`, `arena`, `curve`, `duplicate`, `reserved`, `unknown-card`, and for the cube `cube-size`,
 `cube-alignment`, `cube-bases`, `cube-singleton`, `cube-copies`. `draw-aspect` rejects a draw card with any color other than the Leader's or any
 alignment other than the Leader's. A card with no alignment (of the Leader's color) or with no
 aspects at all passes.

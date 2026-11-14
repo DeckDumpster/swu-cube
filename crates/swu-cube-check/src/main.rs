@@ -43,6 +43,7 @@ fn main() -> ExitCode {
             deck: take("--deck")?,
             group: take("--group")?,
             plan: take("--plan")?,
+            packs: take("--packs")?,
         })
     })();
     let remote = match flags {
@@ -129,7 +130,9 @@ fn main() -> ExitCode {
     }
     let result = match mode {
         "pack" => swu_cube_check::check_pack_value(&value),
-        "cube" => swu_cube_check::check_cube_value(&value),
+        "cube" => remote
+            .size()
+            .and_then(|n| swu_cube_check::check_cube_value_sized(&value, n)),
         "copies" => swu_cube_check::check_copies_value(&value),
         _ => return usage(),
     };
@@ -205,7 +208,7 @@ const USAGE: &str = "usage: swu-cube-check mcp   (serve check_cube over MCP stdi
             {\"packs\": [{\"name\", \"queries\": [search strings], \"deck\": ID?, \"picks\": [...]}]} with the rows fetched for you
        swu-cube-check pack [--planned] [FILE] | cube [--planned] [FILE...] | copies [--planned] [FILE...] | allocate [--verbose] [--fill] [FILE]
   pack      check one pack document (get_deck's result) against the pack rules
-  cube      check a 20-pack cube: a cube document, or one pack file per deck
+  cube      check a cube of 20 packs (--packs N for another even size): a cube document, or one pack file per deck
   copies    only the copy-count check (cube-copies) over any number of pack files, for a partial build
   allocate  plan copies across the cube (one line per pack: picks of slots (+ filled with --fill), eligible pool, skeleton ok/unmet/not checked, contested reserved, short, lost; --verbose adds every
             reserve line and every shared card; a Leader or non-base Rare/Legendary goes to at most one pack): {\"owned\": {id: copies}, \"packs\": [{\"name\", \"slots\": 15,
@@ -226,11 +229,23 @@ struct Remote {
     deck: Option<String>,
     group: Option<String>,
     plan: Option<String>,
+    /// `cube --packs N`: the cube size to check against; 20 when absent.
+    packs: Option<String>,
 }
 
 impl Remote {
     fn any(&self) -> bool {
         self.deck.is_some() || self.group.is_some() || self.plan.is_some()
+    }
+
+    /// The cube size `--packs` names, or the default.
+    fn size(&self) -> Result<usize, String> {
+        match &self.packs {
+            None => Ok(swu_cube_check::CUBE_PACKS),
+            Some(n) => n
+                .parse()
+                .map_err(|_| format!("--packs needs a number, not '{n}'")),
+        }
     }
 }
 
@@ -347,7 +362,9 @@ fn fetched(args: &[String], r: &Remote, planned: bool, verbose: bool, fill: bool
     }
     report(match mode.as_str() {
         "pack" => swu_cube_check::check_pack_value(&value),
-        "cube" => swu_cube_check::check_cube_value(&value),
+        "cube" => r
+            .size()
+            .and_then(|n| swu_cube_check::check_cube_value_sized(&value, n)),
         _ => swu_cube_check::check_copies_value(&value),
     })
 }

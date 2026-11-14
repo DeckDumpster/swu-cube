@@ -120,6 +120,43 @@ Smuggle, Raid) that improve whatever pack they meet.
 
 The archetypes and the leader guidance are advice. "Grand Inquisitor is parasitic" is true for the reason the Force leaders paragraph gives: what the leader spends must come from its own pack's draw cards, never its bases or a partner. `check_cube` does not test them.
 
+### 7. Theme fit
+
+A pack should read as one story when it is opened: the units around a leader are ones that
+leader would fight beside in-universe. Aspects carry some of this, but not enough. A pack can
+pass every rule above and still put an army of the leader's enemies on the table. Score every
+pack you build, and rank the cube by the score when packs must be cut or rebuilt.
+
+**The pack's identity is its leader.** Read the leader's traits (the faction ones: Rebel,
+Imperial, Republic, Separatist, Jedi, Sith, Underworld, Mandalorian, First Order, Resistance,
+New Republic, Nightsister, and the like) and its era. A pack's name and recipe never override
+the leader: a coherent faction pack under a leader from outside that faction scores low.
+
+**Score each of the 15 draw cards and both bases** by what the card is in-universe:
+
+| Score | The card is | Judge by |
+|---|---|---|
+| 2, fits | of the leader's faction, or someone the leader fights beside in the stories | shared faction traits; a named character, ship or location tied to the leader |
+| 1, neutral | of no faction, or of the leader's side from another era | no faction trait (a generic tactic, trick, creature or vehicle); the same side a generation apart |
+| 0, clash | of a faction the leader fights | the other side of the leader's war, or a named enemy |
+
+Judge what a card **puts on the table**, not only its own traits. A card or base that creates
+tokens brings the tokens' faction, and a base whose effect fires every game weighs as much as
+any unit. A base that makes enemy-faction tokens whenever the leader deploys is a clash, even
+when every draw card fits.
+
+**Pack score** = total ÷ (2 × 17), from 0 to 1. Report each pack's score with its clashes named.
+As a guide:
+
+- **0.75 or more:** on theme.
+- **0.60 to 0.75:** loose. Usually a leader whose faction runs thin in the collection, padded
+  with neutral cards. Acceptable.
+- **Below 0.60, or two or more clashes:** off theme. Rebuild or cut first.
+
+When choosing between two cards that do the same job in the skeleton, take the one that fits.
+Theme fit is advice, like the archetypes; `check_cube` does not test it. It never outranks the
+format rules, and outranks universality only between cards of equal power.
+
 ## Never save tool output to files
 
 `check_cube` reads the site itself. **Never copy a `get_deck` or `search_cards` result into a file
@@ -214,7 +251,8 @@ distinct pool, not per pack (step 4), and choose from the results yourself; neve
    One more for the color's bases: `t:base a:<color> -t:leader avail>=1`. Then pick from the combined results the 15
    cards that meet section 4, the 25-HP and 30-HP bases, and the Leader. A contested card reserved to another pack in step 3 is not yours to pick. Prefer
    cards of the Leader's own alignment and color; same-color cards with no alignment, cards of the Leader's
-   alignment with no color, and cards with no aspects are also allowed.
+   alignment with no color, and cards with no aspects are also allowed. Among cards that fill
+   the same slot, take the one that fits the leader (§7), and score the finished pack.
 5. **Save the pack by card ids, then check the saved deck.** A planned pack is named by card
    ids only: the Leader, the two bases and the 15 draw ids, each with a qty of 1. Write no card
    objects and no files. `create_deck` (`format`: `SWU Jumpstart Cube`, `group`: the group name
@@ -262,5 +300,5 @@ The rules reported are: `shape`, `leader`, `base-hp`, `base-aspect`, `base-name`
 alignment other than the Leader's. A card with no alignment (of the Leader's color) or with no
 aspects at all passes.
 
-Finish by telling the user which packs were built, which Leaders you chose and why, and the
-`check_cube` cube output.
+Finish by telling the user which packs were built, which Leaders you chose and why, each pack's
+theme-fit score with its clashes named (§7), and the `check_cube` cube output.

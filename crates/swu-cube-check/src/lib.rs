@@ -40,8 +40,8 @@ pub const EPIC_BASES: [(&str, &str); 4] = [
 
 pub const PACK_SIZE: u32 = 18;
 pub const DRAW_CARDS: u32 = 15;
+/// The cube size when none is given; `cube --packs N` and check_cube's `packs` set another.
 pub const CUBE_PACKS: usize = 20;
-pub const PACKS_PER_COLOR: usize = 5;
 pub const GROUND_UNITS: u32 = 8;
 /// Cost 1, 2, 3, 4, 5, 6+: the inclusive quantity range of each.
 pub const CURVE: [(u32, u32); 6] = [(0, 1), (4, 5), (4, 5), (2, 3), (1, 2), (1, 1)];
@@ -387,6 +387,18 @@ pub fn check_pack(pack: &Pack) -> Vec<Failure> {
         .into_iter()
         .flat_map(|k| pack.of_kind(k))
         .collect();
+    // A pack holds one copy of each draw card: a second copy is a slot the pack spent on
+    // something it already has. Copies may still repeat across packs.
+    let mut seen: BTreeMap<String, u32> = BTreeMap::new();
+    for (c, q) in &draw {
+        *seen.entry(identity(c)).or_default() += q;
+    }
+    for (name, n) in seen.into_iter().filter(|(_, n)| *n > 1) {
+        out.push(fail(
+            "duplicate",
+            format!("'{name}' is in the pack {n} times; each draw card appears once"),
+        ));
+    }
     let draw_count: u32 = draw.iter().map(|(_, q)| q).sum();
     if draw_count != DRAW_CARDS {
         out.push(fail(
@@ -896,9 +908,10 @@ pub fn check_pack_value(doc: &Value) -> Result<Vec<Failure>, String> {
     Ok(check_pack(&Pack::from_value(doc, &Value::Null)?))
 }
 
-/// The pack checks of every pack, then the cube's: 20 packs, 10 of each alignment, 5 of each
-/// color's base pair.
-pub fn check_cube(packs: &[Pack]) -> Vec<Failure> {
+/// The pack checks of every pack, then the cube's: `size` packs (20 by default), half of each
+/// alignment, and the colors' base pairs as even as `size` allows (5 each at 20; at 18, two
+/// colors have 5 and two have 4).
+pub fn check_cube(packs: &[Pack], size: usize) -> Vec<Failure> {
     let mut out = Vec::new();
     for p in packs {
         out.extend(check_pack(p).into_iter().map(|f| Failure {
@@ -906,12 +919,13 @@ pub fn check_cube(packs: &[Pack]) -> Vec<Failure> {
             ..f
         }));
     }
-    if packs.len() != CUBE_PACKS {
+    if packs.len() != size {
         out.push(fail(
             "cube-size",
-            format!("{} packs, not {CUBE_PACKS}", packs.len()),
+            format!("{} packs, not {size}", packs.len()),
         ));
     }
+    let (fewest, most) = (size / COLORS.len(), size.div_ceil(COLORS.len()));
     let mut alignments: BTreeMap<String, usize> = BTreeMap::new();
     let mut colors: BTreeMap<String, usize> = BTreeMap::new();
     for (a, c) in packs.iter().filter_map(Pack::leader) {
@@ -920,19 +934,24 @@ pub fn check_cube(packs: &[Pack]) -> Vec<Failure> {
     }
     for a in ALIGNMENTS {
         let n = alignments.get(a).copied().unwrap_or(0);
-        if n != CUBE_PACKS / 2 {
+        if n != size / 2 {
             out.push(fail(
                 "cube-alignment",
-                format!("{n} {a} packs, not {}", CUBE_PACKS / 2),
+                format!("{n} {a} packs, not {}", size / 2),
             ));
         }
     }
     for c in COLORS {
         let n = colors.get(c).copied().unwrap_or(0);
-        if n != PACKS_PER_COLOR {
+        if !(fewest..=most).contains(&n) {
+            let want = if fewest == most {
+                format!("{fewest}")
+            } else {
+                format!("{fewest} or {most}")
+            };
             out.push(fail(
                 "cube-bases",
-                format!("{n} {c} base pairs, not {PACKS_PER_COLOR}"),
+                format!("{n} {c} base pairs, not {want}"),
             ));
         }
     }
@@ -1059,11 +1078,23 @@ fn packs_of(doc: &Value) -> Result<Vec<Pack>, String> {
     list.iter().map(|p| Pack::from_value(p, shared)).collect()
 }
 
-/// Reads a cube document (see the crate docs) and checks it.
+/// Reads a cube document (see the crate docs) and checks it as a cube of `CUBE_PACKS` packs.
 pub fn check_cube_value(doc: &Value) -> Result<Vec<Failure>, String> {
+    check_cube_value_sized(doc, CUBE_PACKS)
+}
+
+/// Reads a cube document and checks it as a cube of `size` packs: an even number, at least one
+/// pack of each color per alignment (8), since every pack's alignment is half the cube.
+pub fn check_cube_value_sized(doc: &Value, size: usize) -> Result<Vec<Failure>, String> {
+    if !size.is_multiple_of(2) || size < 2 * COLORS.len() {
+        return Err(format!(
+            "a cube of {size} packs cannot be checked: the size must be even and at least {}",
+            2 * COLORS.len()
+        ));
+    }
     let packs = packs_of(doc)?;
     require_identity(&packs)?;
-    Ok(check_cube(&packs))
+    Ok(check_cube(&packs, size))
 }
 
 /// Only the copy-count rule over any number of packs, for a partial or test build that the
@@ -1744,6 +1775,80 @@ mod tests {
         let mut c = cube();
         c[0] = pack(1, "Heroism", "Cunning");
         assert!(cube_rules(c).contains(&"cube-bases"));
+    }
+
+    fn sized_rules(packs: Vec<Value>, size: usize) -> Vec<&'static str> {
+        check_cube_value_sized(&Value::Array(packs), size)
+            .unwrap()
+            .into_iter()
+            .map(|f| f.rule)
+            .collect()
+    }
+
+    /// The passing cube less one Command Heroism and one Vigilance Villainy pack: 9 of each
+    /// alignment, Command and Vigilance at 4, Aggression and Cunning at 5.
+    fn cube_of_18() -> Vec<Value> {
+        let mut c = cube();
+        c.remove(9);
+        c.remove(0);
+        c
+    }
+
+    #[test]
+    fn an_18_pack_cube_passes_at_size_18() {
+        assert_eq!(sized_rules(cube_of_18(), 18), Vec::<&str>::new());
+    }
+
+    #[test]
+    fn an_18_pack_cube_fails_the_default_size() {
+        assert!(cube_rules(cube_of_18()).contains(&"cube-size"));
+    }
+
+    #[test]
+    fn at_18_no_color_may_drop_to_3() {
+        let mut c = cube();
+        c.remove(3);
+        c.remove(0);
+        let f = check_cube_value_sized(&Value::Array(c), 18).unwrap();
+        assert!(
+            f.iter()
+                .any(|f| f.rule == "cube-bases" && f.message == "3 Command base pairs, not 4 or 5"),
+            "{f:?}"
+        );
+    }
+
+    #[test]
+    fn an_odd_or_tiny_size_is_refused() {
+        for n in [19, 6] {
+            assert!(
+                check_cube_value_sized(&Value::Array(cube()), n).is_err(),
+                "{n}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_draw_card_twice_in_a_pack_fails() {
+        let mut p = pack(1, "Heroism", "Command");
+        edit(&mut p, "C1-1", |c| c["name"] = json!("Card 1-0"));
+        let f = check_pack_value(&p).unwrap();
+        assert!(
+            f.iter().any(|f| f.rule == "duplicate"
+                && f.message == "'Card 1-0' is in the pack 2 times; each draw card appears once"),
+            "{f:?}"
+        );
+        assert!(!rules(&pack(1, "Heroism", "Command")).contains(&"duplicate"));
+    }
+
+    #[test]
+    fn the_same_title_with_another_subtitle_is_not_a_duplicate() {
+        let mut p = pack(1, "Heroism", "Command");
+        edit(&mut p, "C1-0", |c| c["subtitle"] = json!("One"));
+        edit(&mut p, "C1-1", |c| {
+            c["name"] = json!("Card 1-0");
+            c["subtitle"] = json!("Two");
+        });
+        assert!(!rules(&p).contains(&"duplicate"));
     }
 
     fn set(doc: &mut Value, id: &str, name: &str, subtitle: Value, rarity: &str) {
